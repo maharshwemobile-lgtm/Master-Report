@@ -1,0 +1,64 @@
+const MAIN_BOT_TOKEN = "8737468036:AAEzA3ujjzQ3zelPq66tr8Llwml76aCNQaU";
+
+const GRAND_ADMIN_CHAT_ID = "6961343629";
+const TEST_CHAT_ID = "8128573692";
+
+/**
+ * Test role only:
+ * "customer" | "staff" | "admin"
+ */
+const TEST_ROLE = "staff";
+const TEST_ADMIN_SHEET_ID = "796808448"; // AC Mobile
+const TEST_STAFF_NAME = "KMA";
+
+const SERVICE_SPREADSHEET_ID = "1PRKc4GpgkzxqP6TJaIZmo-Yc37UR50XASiDpD49F_XU";
+const SERVICE_SHEET_NAME = "April Service";
+const MASTER_SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+const VPN_SHEET_GID = "1759346705";
+const MAHAR_SHWE_ID = "1977354621";
+
+const STAFF_CHAT_IDS = {
+  "Khun Lwin OO": "5386894413",
+  "Khun Mg Ponn": "6730666866",
+  "Sayar San": "8035358430",
+  "Ba Mg": "8731433727",
+  "Khin Mg": "8594997419",
+  "KMA": "8128573692"
+};
+
+const MASTER_SHEET_CONFIG = {
+  "1977354621": { sheetName: "MaharShwe Mobile", repairIdCol: 10, modelCols: [3, 4], ownerNameCol: 2, issueCol: 5 },
+  "796808448": { sheetName: "AC Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "1867017017": { sheetName: "BO BO Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "344236274": { sheetName: "The Light Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "2126603909": { sheetName: "Power 9", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "918968029": { sheetName: "Hsi Hseng Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 }
+};
+
+const REPORT_SHEET_CONFIG = {
+  "1977354621": { triggerCol: 7, triggerValue: "Done", sheetName: "Mahar Shwe Mobile" },
+  "796808448": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "AC Mobile" },
+  "1867017017": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "BO BO Mobile" },
+  "344236274": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "The Light Mobile" },
+  "2126603909": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "Power 9" },
+  "918968029": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "Hsi Hseng Mobile" }
+};
+
+const PREFIX_MAP = {
+  "1977354621": "MH",
+  "796808448": "AC",
+  "1867017017": "BB",
+  "344236274": "TL",
+  "2126603909": "P9",
+  "918968029": "HS"
+};
+
+const HISTORY_SS_ID = "1rQSNW5FE45SaR0M1pk8h_d4PORyao_noFpKqb-s2Res";
+const EXCLUDED_SHEETS = ["415188442"];
+
+const SERVICE_COL = {
+  DATE: 0, STAFF: 1, MODEL: 2, REPAIR_TYPE: 3, OWNER: 4,
+  STATUS: 5, REPAIR_ID: 6, COMMISSION: 7, COMPLETED_DATE: 8, ADMIN_REPLY: 9
+};
+
+const REPAIR_ID_PATTERN = /^(AC|HH|MH|PO|BO)\d+$/i;

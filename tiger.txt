@@ -1,0 +1,303 @@
+function doPost(e) {
+  try {
+    const contents = JSON.parse(e.postData.contents);
+
+    if (contents.callback_query) {
+      handleCallback(contents.callback_query);
+      return;
+    }
+
+    if (!contents.message) return;
+
+    const chatId = contents.message.chat.id.toString();
+    const text = (contents.message.text || "").trim();
+    const props = PropertiesService.getScriptProperties();
+    const state = props.getProperty(`state_${chatId}`);
+    const role = resolveRole(chatId);
+    const staffName = getEffectiveStaffName(chatId);
+
+    if (text === "/start") {
+      if (role === "admin") return sendMainMenu(chatId, "မင်္ဂလာပါ Mahar Shwe Mobile Admin မှ ကြိုဆိုပါတယ်။");
+      if (role === "staff") return showServiceMenu(chatId, staffName || TEST_STAFF_NAME);
+      return showCustomerMenu(chatId);
+    }
+
+    if (role === "admin") {
+      const buttons = ["VPN Premium ဝယ်ရန်", "ယနေ့ ယူပြီး", "ယနေ့ အပ်ထားသောအလုံးများ", "ပြင်ပြီးမယူရသေးသော", "ငွေရှင်းရန် စုပေါင်း"];
+      if (buttons.includes(text)) {
+        if (text === "VPN Premium ဝယ်ရန်") {
+          props.setProperty(`state_${chatId}`, "WAITING_VPN_NAME_ADMIN");
+          sendTelegram(chatId, "📝 VPN အသုံးပြုမည့်သူ၏ နာမည်ကို ရိုက်ထည့်ပေးပါ -");
+          return;
+        }
+        sendReport(chatId, text, `📊 ${text}`);
+        return;
+      }
+      if (state === "WAITING_VPN_NAME_ADMIN") {
+        generateVPNKeyCustomer(chatId, text);
+        props.deleteProperty(`state_${chatId}`);
+        return;
+      }
+    }
+
+    if (role === "staff") {
+      if (text === "/service" || text === "/repair") return showServiceMenu(chatId, staffName || TEST_STAFF_NAME);
+      if (REPAIR_ID_PATTERN.test(text) || state === "WAIT_REPAIR_ID") {
+        processRepairId(chatId, text, staffName || TEST_STAFF_NAME);
+        return;
+      }
+    }
+
+    if (role === "customer") {
+      if (text === "🛡️ VPN Premium ဝယ်မည်") {
+        props.setProperty(`state_${chatId}`, "WAITING_VPN_NAME_CUSTOMER");
+        return sendTelegram(chatId, "📝 VPN အသုံးပြုမည့်သူ၏ နာမည်ကို ရိုက်ထည့်ပေးပါ -", { keyboard: [[{ text: "🏠 Main Menu" }]], resize_keyboard: true });
+      }
+
+      if (state === "WAITING_VPN_NAME_CUSTOMER") {
+        generateVPNKeyCustomer(chatId, text);
+        props.deleteProperty(`state_${chatId}`);
+        return;
+      }
+
+      if (text === "🔍 Voucher ဖြင့် ဖုန်းပြင်အခြေအနေကြည့်မည်") {
+        props.setProperty(`state_${chatId}`, "VOUCHER_LOOKUP");
+        return sendTelegram(chatId, "Voucher နံပါတ်ကို ရိုက်ထည့်ပေးပါ။", { keyboard: [[{ text: "🏠 Main Menu" }]], resize_keyboard: true });
+      }
+
+      if (state === "VOUCHER_LOOKUP") {
+        voucherLookup(chatId, text);
+        props.deleteProperty(`state_${chatId}`);
+        return;
+      }
+
+      if (text === "📞 Contact ဆက်သွယ်မည်") {
+        sendTelegram(chatId, "📍 *Mahar Shwe Mobile*\n\n🏠 နေရာ: ဆီဆိုင်မြို့\n💬 Telegram: @Mylifemychoice68");
+        return;
+      }
+
+      if (text === "🏠 Main Menu") {
+        showCustomerMenu(chatId);
+        return;
+      }
+    }
+  } catch (err) {
+    sendTelegram(GRAND_ADMIN_CHAT_ID, "❌ Error: " + err.toString());
+  }
+}
+
+function handleCallback(cb) {
+  const chatId = cb.message.chat.id.toString();
+  const data = cb.data;
+  const messageId = cb.message.message_id;
+  const props = PropertiesService.getScriptProperties();
+  const role = resolveRole(chatId);
+  const staffName = getEffectiveStaffName(chatId);
+
+  if (role === "staff") {
+    if (data === "confirm_yes") {
+      const st = props.getProperty(`state_${chatId}`);
+      if (!st || !st.startsWith("CONFIRM_REPAIR|")) return;
+      const tmp = JSON.parse(st.split("|")[1]);
+      const row = addServiceEntry(tmp.repairId, staffName || TEST_STAFF_NAME, tmp.masterData);
+
+      sendTelegramWithButtons(chatId, `✅ *စရင်းသွင်းပြီးပါပြီ*\n\n🆔 ${tmp.repairId}\n📱 ${tmp.masterData.model}\n👤 ${tmp.masterData.ownerName}\n🔧 ${tmp.masterData.issue}\n⏳ Status: Pending`, [
+        [{ text: "✅ ပြင်ပြီး Done", callback_data: `done_${row}` }],
+        [{ text: "🏠 Home", callback_data: "home" }]
+      ]);
+      props.deleteProperty(`state_${chatId}`);
+      return;
+    }
+
+    if (data === "confirm_no") {
+      editMessage(chatId, messageId, cb.message.text + "\n\n❌ *Cancelled*");
+      props.deleteProperty(`state_${chatId}`);
+      return;
+    }
+
+    if (data === "home") return showServiceMenu(chatId, staffName || TEST_STAFF_NAME);
+
+    if (data === "menu_new_entry") {
+      props.setProperty(`state_${chatId}`, "WAIT_REPAIR_ID");
+      sendTelegram(chatId, "🆔 *Repair ID* ရိုက်ထည့်ပါ။");
+      return;
+    }
+
+    if (data === "menu_today") {
+      const jobs = getTodayJobs(staffName || TEST_STAFF_NAME);
+      if (!jobs.length) return sendTelegram(chatId, "📅 ဒီနေ့အတွက် စာရင်းမရှိသေးပါဗျ။");
+      let r = `📅 *ဒီနေ့ ပြင်ထားတဲ့အလုံးများ (${staffName || TEST_STAFF_NAME})*\n\n`;
+      jobs.forEach((j, i) => r += `${i + 1}. ${j.status === "Done" ? "✅" : "⏳"} *${j.repairId}* | ${j.model}\n`);
+      return sendTelegramWithButtons(chatId, r, [[{ text: "🏠 Home", callback_data: "home" }]]);
+    }
+
+    if (data === "menu_pending") {
+      const pending = getPendingJobs(staffName || TEST_STAFF_NAME);
+      if (!pending.length) return sendTelegram(chatId, "⏳ လက်ရှိ Pending အလုံးမရှိပါဗျ။");
+      const btns = pending.map(j => [{ text: `✅ ${j.repairId} - ${j.model}`, callback_data: `complete_${j.row}` }]);
+      btns.push([{ text: "🏠 Home", callback_data: "home" }]);
+      return sendTelegramWithButtons(chatId, "⏳ *Pending အလု  းများ*", btns);
+    }
+
+    if (data === "menu_month") {
+      const sum = getMonthlySummary(staffName || TEST_STAFF_NAME);
+      return sendTelegramWithButtons(chatId,
+        `💰 *လစာရင်းချုပ်*\n\n📱 Total: ${sum.totalJobs}\n⏳ Pending: ${sum.pendingJobs}\n✅ Done: ${sum.completedJobs}\n💵 Commission: ${sum.totalCommission.toLocaleString()} ကျပ်`,
+        [[{ text: "🏠 Home", callback_data: "home" }]]
+      );
+    }
+
+    if (data.startsWith("done_") || data.startsWith("complete_")) {
+      const rowNum = parseInt(data.split("_")[1], 10);
+      completeServiceEntry(rowNum);
+      return sendTelegramWithButtons(chatId, "✅ *Done!*", [[{ text: "🏠 Home", callback_data: "home" }]]);
+    }
+  }
+}
+
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  const menu = ui.createMenu("Mahar Shwe Bot");
+  menu.addItem("🚀 Webhook ချိတ်ဆက်မည်", "setMainWebhook");
+  menu.addItem("🛠️ Install Spreadsheet Trigger", "installTrigger");
+  menu.addItem("📝 Set Admin IDs for Current Sheet", "setChatIdForCurrentSheet");
+  menu.addItem("🔧 Fix Existing Repair IDs", "fixExistingRepairIDs");
+  menu.addSeparator();
+  menu.addItem("Set Admin Chat ID (Mahar Shwe)", "setChatIdForMaharShwe");
+  menu.addToUi();
+}
+
+function setChatIdForCurrentSheet() {
+  const sheetId = SpreadsheetApp.getActiveSheet().getSheetId().toString();
+  const res = SpreadsheetApp.getUi().prompt("ဒီ sheet အတွက် Admin Chat ID များကို comma ခံပြီးထည့်ပါ:\nဥပမာ: 5143380662,8128573692");
+  if (res.getSelectedButton() == SpreadsheetApp.getUi().Button.OK) {
+    PropertiesService.getScriptProperties().setProperty("SHOP_ADMIN_CHAT_IDS_" + sheetId, res.getResponseText().trim());
+    SpreadsheetApp.getUi().alert("Sheet-specific admin IDs သိမ်းဆည်းပြီးပါပြီ။");
+  }
+}
+
+function setChatIdForMaharShwe() {
+  const res = SpreadsheetApp.getUi().prompt("ဆိုင်ရှင် Chat ID ထည့်ပါ:");
+  if (res.getSelectedButton() == SpreadsheetApp.getUi().Button.OK) {
+    PropertiesService.getScriptProperties().setProperty("SHOP_ADMIN_CHAT_IDS_1977354621", res.getResponseText().trim());
+    SpreadsheetApp.getUi().alert("Mahar Shwe Chat ID သိမ်းဆည်းပြီးပါပြီ။");
+  }
+}
+
+function installTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("onEditTrigger").forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet()).onEdit().create();
+  SpreadsheetApp.getUi().alert("Trigger Installed!");
+}
+
+function fixExistingRepairIDs() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.alert("ရှိပြီးသား အတန်းတွေအတွက် Repair ID များ ပြန်ဖြည့်ပေးမည်။ ဆက်လုပ်မလား?", ui.ButtonSet.YES_NO);
+  if (response != ui.Button.YES) return;
+
+  let totalFixed = 0;
+  ss.getSheets().forEach(sheet => {
+    const sheetId = sheet.getSheetId().toString();
+    if (!REPORT_SHEET_CONFIG[sheetId]) return;
+
+    const prefix = PREFIX_MAP[sheetId] || "ID";
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const cell = sheet.getRange(i + 1, 11);
+      if (!cell.getValue()) {
+        cell.setValue(prefix + (1000 + i));
+        totalFixed++;
+      }
+    }
+  });
+
+  ui.alert("ပြင်ဆင်ပြီးပါပြီ။ စုစုပေါင်း " + totalFixed + " ကြောင်း ဖြည့်ပေးခဲ့ပါတယ်။");
+}
+
+function setMainWebhook() {
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbx1T-5OEMfZOKRPrknHken_3FdDligwD49N5P4YIj-G99E01qVo0sJLLxEvlmUTMHRl/exec";
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/setWebhook?url=${webAppUrl}`);
+}
+
+function onEditTrigger(e) {
+  if (!e) return;
+
+  const sheet = e.range.getSheet();
+  const sheetId = sheet.getSheetId().toString();
+  const config = REPORT_SHEET_CONFIG[sheetId];
+  if (!config) return;
+
+  const col = e.range.getColumn();
+  const row = e.range.getRow();
+  const value = (e.range.getValue() || "").toString().trim();
+  if (row <= 1) return;
+
+  if ((col === 2 || col === 3) && value !== "" && !EXCLUDED_SHEETS.includes(sheetId)) {
+    const dateCell = sheet.getRange(row, 1);
+    if (!dateCell.getValue()) {
+      dateCell.setValue(new Date()).setNumberFormat("dd/mm/yyyy");
+    }
+    const idCell = sheet.getRange(row, 11);
+    if (!idCell.getValue()) {
+      idCell.setValue((PREFIX_MAP[sheetId] || "ID") + (1000 + (row - 1)));
+    }
+  }
+
+  if (col === 5 && value === "ပြင်ပြီး") {
+    sheet.getRange(row, 7).setValue("မယူရသေး");
+  }
+
+  if (col === config.triggerCol && value !== config.triggerValue) {
+    sheet.getRange(row, 9).clearContent();
+  }
+
+  if (col === config.triggerCol && value === config.triggerValue) {
+    const existing = sheet.getRange(row, 9).getValue();
+    if (existing) return;
+
+    const now = new Date();
+    sheet.getRange(row, 9).setValue(now).setNumberFormat("dd/mm/yyyy hh:mm:ss am/pm");
+
+    const rowData = sheet.getRange(row, 1, 1, 10).getValues()[0];
+    const formattedNow = Utilities.formatDate(now, "GMT+6:30", "dd/MM/yyyy hh:mm:ss a");
+    const repairIDStr = (sheet.getRange(row, 11).getValue() || "-").toString();
+
+    try {
+      const historySs = SpreadsheetApp.openById(HISTORY_SS_ID);
+      historySs.getSheets()[0].appendRow([rowData[0], rowData[1], rowData[2], rowData[3], rowData[4], rowData[5], formattedNow, repairIDStr]);
+    } catch (err) {}
+
+    let chatIds = (PropertiesService.getScriptProperties().getProperty("CHAT_ID_" + sheetId) || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!chatIds.includes(GRAND_ADMIN_CHAT_ID)) chatIds.push(GRAND_ADMIN_CHAT_ID);
+    if (!chatIds.includes(TEST_CHAT_ID)) chatIds.push(TEST_CHAT_ID);
+
+    let message = "";
+    if (sheetId === "1977354621") {
+      message = "✅ *" + config.sheetName + "* မှ " + config.triggerValue + "\n" +
+        "🆔 Repair ID : `" + repairIDStr + "`\n\n" +
+        "📄 Voucher No : " + (rowData[1] || "-") + "\n" +
+        "👤 နာမည် : " + (rowData[2] || "-") + "\n" +
+        "📱 ဖုန်း : " + (rowData[3] || "-") + " / " + (rowData[4] || "-") + "\n" +
+        "📝 ပြုပြင်တဲ့အပိုင်း : " + (rowData[5] || "-") + "\n" +
+        "🏷️ အခြေနေ : " + (rowData[6] || "-") + "\n\n" +
+        "⏰ အချိန် : " + formattedNow;
+    } else {
+      message = "✅ *" + config.sheetName + "* မှ " + config.triggerValue + "\n" +
+        "🆔 Repair ID : `" + repairIDStr + "`\n\n" +
+        "👤 နာမည် : " + (rowData[1] || "-") + "\n" +
+        "📱 ဖုန်း : " + (rowData[2] || "-") + "\n" +
+        "📝 ပြုပြင်တဲ့အပိုင်း : " + (rowData[3] || "-") + "\n" +
+        "🏷️ အခြေနေ : " + (rowData[4] || "-") + "\n" +
+        "💰 ကျသင့်ငွေ : " + (rowData[5] || "-") + "\n\n" +
+        "⏰ အချိန် : " + formattedNow;
+    }
+
+    chatIds.forEach(id => {
+      try {
+        sendTelegram(id, message);
+      } catch (err) {}
+    });
+  }
+}

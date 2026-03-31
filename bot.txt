@@ -1,0 +1,105 @@
+function sendTelegram(chatId, text, kb = null, parseMode = "Markdown") {
+  const payload = { chat_id: chatId, text, parse_mode: parseMode };
+  if (kb) payload.reply_markup = kb;
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendMessage`, {
+    method: "post", contentType: "application/json", payload: JSON.stringify(payload)
+  });
+}
+
+function sendTelegramWithButtons(chatId, text, buttons, parseMode = "Markdown") {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendMessage`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ chat_id: chatId, text, parse_mode: parseMode, reply_markup: { inline_keyboard: buttons } })
+  });
+}
+
+function sendTelegramPhoto(chatId, url, caption) {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendPhoto`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ chat_id: chatId, photo: url, caption, parse_mode: "Markdown" })
+  });
+}
+
+function editMessage(chatId, messageId, newText, parseMode = "Markdown") {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/editMessageText`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: newText, parse_mode: parseMode })
+  });
+}
+
+function getSheetAdminIds(sheetId) {
+  const raw = PropertiesService.getScriptProperties().getProperty("SHOP_ADMIN_CHAT_IDS_" + sheetId) || "";
+  return raw.split(",").map(s => s.trim()).filter(Boolean);
+}
+
+function isGrandAdmin(chatId) {
+  return chatId.toString() === GRAND_ADMIN_CHAT_ID;
+}
+
+function isTestChat(chatId) {
+  return chatId.toString() === TEST_CHAT_ID;
+}
+
+function resolveRole(chatId) {
+  const chatIdStr = chatId.toString();
+  if (chatIdStr === GRAND_ADMIN_CHAT_ID) return "admin";
+  if (chatIdStr === TEST_CHAT_ID) return TEST_ROLE;
+  if (getAuthorizedSheetIdsForChat(chatId).length > 0) return "admin";
+  if (getRealStaffName(chatId)) return "staff";
+  return "customer";
+}
+
+function getAuthorizedSheetIdsForChat(chatId) {
+  const chatIdStr = chatId.toString();
+  if (chatIdStr === GRAND_ADMIN_CHAT_ID) return Object.keys(REPORT_SHEET_CONFIG);
+  if (chatIdStr === TEST_CHAT_ID && TEST_ROLE === "admin") return [TEST_ADMIN_SHEET_ID];
+
+  const allowed = [];
+  Object.keys(REPORT_SHEET_CONFIG).forEach(sheetId => {
+    if (getSheetAdminIds(sheetId).includes(chatIdStr)) allowed.push(sheetId);
+  });
+  return allowed;
+}
+
+function getRealStaffName(chatId) {
+  const chatIdStr = chatId.toString();
+  for (let name in STAFF_CHAT_IDS) {
+    if (STAFF_CHAT_IDS[name] === chatIdStr) return name;
+  }
+  return null;
+}
+
+function getEffectiveStaffName(chatId) {
+  if (isTestChat(chatId) && TEST_ROLE === "staff") return TEST_STAFF_NAME;
+  return getRealStaffName(chatId);
+}
+
+function sendMainMenu(chatId, msg) {
+  sendTelegram(chatId, msg, {
+    keyboard: [
+      ["VPN Premium ဝယ်ရန်"],
+      ["ယနေ့ ယူပြီး", "ယနေ့ အပ်ထားသောအလုံးများ"],
+      ["ပြင်ပြီးမယူရသေးသော", "ငွေရှင်းရန် စုပေါင်း"]
+    ],
+    resize_keyboard: true
+  });
+}
+
+function showCustomerMenu(chatId) {
+  sendTelegram(chatId, "မင်္ဂလာပါ Mahar Shwe Mobile မှ ကြိုဆိုပါတယ်။", {
+    keyboard: [
+      [{ text: "🔍 Voucher ဖြင့် ဖုန်းပြင်အခြေအနေကြည့်မည်" }],
+      [{ text: "🛡️ VPN Premium ဝယ်မည်" }, { text: "📞 Contact ဆက်သွယ်မည်" }]
+    ],
+    resize_keyboard: true
+  });
+}
+
+function showServiceMenu(chatId, staffName) {
+  sendTelegramWithButtons(chatId, `🙏 မင်္ဂလာပါ ဆရာ *${staffName}*\nဘာလုပ်ဆောင်လိုပါသလဲ?`, [
+    [{ text: "📝 စရင်းသွင်းရန်", callback_data: "menu_new_entry" }],
+    [{ text: "📅 ဒီနေ့ ပြင်ထားတဲ့အလုံးများ", callback_data: "menu_today" }],
+    [{ text: "⏳ Pending အလုံးများ", callback_data: "menu_pending" }],
+    [{ text: "💰 ဒီလစာရင်း + Commission", callback_data: "menu_month" }]
+  ]);
+}
