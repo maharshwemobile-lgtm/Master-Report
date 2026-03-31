@@ -136,7 +136,7 @@ function handleCallback(cb) {
       if (!pending.length) return sendTelegram(chatId, "⏳ လက်ရှိ Pending အလုံးမရှိပါဗျ။");
       const btns = pending.map(j => [{ text: `✅ ${j.repairId} - ${j.model}`, callback_data: `complete_${j.row}` }]);
       btns.push([{ text: "🏠 Home", callback_data: "home" }]);
-      return sendTelegramWithButtons(chatId, "⏳ *Pending အလု  းများ*", btns);
+      return sendTelegramWithButtons(chatId, "⏳ *Pending အလုံးများ*", btns);
     }
 
     if (data === "menu_month") {
@@ -237,7 +237,7 @@ function onEditTrigger(e) {
   if ((col === 2 || col === 3) && value !== "" && !EXCLUDED_SHEETS.includes(sheetId)) {
     const dateCell = sheet.getRange(row, 1);
     if (!dateCell.getValue()) {
-      dateCell.setValue(new Date()).setNumberFormat("dd/mm/yyyy");
+      dateCell.setValue(new Date()).setNumberFormat("dd/MM/yyyy");
     }
     const idCell = sheet.getRange(row, 11);
     if (!idCell.getValue()) {
@@ -258,7 +258,7 @@ function onEditTrigger(e) {
     if (existing) return;
 
     const now = new Date();
-    sheet.getRange(row, 9).setValue(now).setNumberFormat("dd/mm/yyyy hh:mm:ss am/pm");
+    sheet.getRange(row, 9).setValue(now).setNumberFormat("dd/MM/yyyy hh:mm:ss am/pm");
 
     const rowData = sheet.getRange(row, 1, 1, 10).getValues()[0];
     const formattedNow = Utilities.formatDate(now, "GMT+6:30", "dd/MM/yyyy hh:mm:ss a");
@@ -269,7 +269,7 @@ function onEditTrigger(e) {
       historySs.getSheets()[0].appendRow([rowData[0], rowData[1], rowData[2], rowData[3], rowData[4], rowData[5], formattedNow, repairIDStr]);
     } catch (err) {}
 
-    let chatIds = (PropertiesService.getScriptProperties().getProperty("CHAT_ID_" + sheetId) || "").split(",").map(s => s.trim()).filter(Boolean);
+    let chatIds = getSheetAdminIds(sheetId);
     if (!chatIds.includes(GRAND_ADMIN_CHAT_ID)) chatIds.push(GRAND_ADMIN_CHAT_ID);
     if (!chatIds.includes(TEST_CHAT_ID)) chatIds.push(TEST_CHAT_ID);
 
