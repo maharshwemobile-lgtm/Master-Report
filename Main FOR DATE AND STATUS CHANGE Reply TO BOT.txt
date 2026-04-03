@@ -1,0 +1,1509 @@
+// ==================== MAHAR SHWE MOBILE TELEGRAM BOT WITH AUTO-TRAINING ====================
+// CLEAN VERSION - NO DUPLICATE DECLARATIONS
+
+// ==================== CONFIGURATION ====================
+const MAIN_BOT_TOKEN = "8737468036:AAEzA3ujjzQ3zelPq66tr8Llwml76aCNQaU";
+const ADMIN_CHAT_ID = "6961343629";
+const AC_ADMIN_ID = "5143380662";
+
+// ---------------------- Service bot (staff) ----------------------
+const SERVICE_SPREADSHEET_ID = "1PRKc4GpgkzxqP6TJaIZmo-Yc37UR50XASiDpD49F_XU";
+const SERVICE_SHEET_NAME = "April Service";
+const MASTER_SPREADSHEET_ID = "1qo9wnZbR-N8IQ6w0vdhwg7W4s-RbqeKra0_RYa_yPEA";
+const VPN_SHEET_GID = "1759346705";
+const VPN_COL = {
+  REQUEST_TIME: 0,
+  KEY: 1,
+  STATUS: 2,
+ QR: 3,
+  USER_NAME: 4,
+  PLAN_TYPE: 5
+};
+const VPN_STATUS = {
+  AVAILABLE: "Available",
+  ISSUED: "Issued"
+};
+const VPN_PLAN = {
+  FREE: "Free",
+  ONE_MONTH: "1M",
+  TWO_MONTHS: "2M"
+};
+const VPN_BILLER_NAME = "Khun Myint Aung";
+const VPN_BILLER_PHONE = "09778394052";
+const VPN_PAYMENT_PLATFORM = "KBZ Pay";
+const AI_MODEL_ENABLED = false;
+const AI_MODEL_API_URL = "";
+const AI_MODEL_API_KEY = "";
+
+const staffChatIDs = {
+  "Khun Lwin OO": "5386894413",
+  "Khun Mg Ponn": "6730666866", 
+  "Sayar San": "8035358430",
+  "Ba Mg": "8731433727",
+  "Khin Mg": "8594997419",
+  "KMA": "8128573692",
+  "Mr. Khun": "6961343629"
+};
+
+const MASTER_SHEET_CONFIG = {
+  "1977354621": { sheetName: "MaharShwe Mobile", repairIdCol: 10, modelCols: [3,4], ownerNameCol: 2, issueCol: 5 },
+  "796808448": { sheetName: "AC Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "1867017017": { sheetName: "BO BO Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "344236274": { sheetName: "The Light Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "2126603909": { sheetName: "Power 9", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 },
+  "918968029": { sheetName: "Hsi Hseng Mobile", repairIdCol: 10, modelCols: [3], ownerNameCol: 2, issueCol: 5 }
+};
+
+const SERVICE_COL = {
+  DATE: 0, STAFF: 1, MODEL: 2, REPAIR_TYPE: 3, OWNER: 4,
+  STATUS: 5, REPAIR_ID: 6, COMMISSION: 7, COMPLETED_DATE: 8, ADMIN_REPLY: 9
+};
+
+const REPAIR_ID_PATTERN = /^(AC|HH|MH|PO|BO)\d+$/i;
+
+// ---------------------- Admin bot (reports) ----------------------
+const REPORT_SHEET_CONFIG = {
+  "1977354621": { triggerCol: 7, triggerValue: "Done", sheetName: "Mahar Shwe Mobile" },
+  "796808448": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "AC Mobile" },
+  "1867017017": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "BO BO Mobile" },
+  "344236274": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "The Light Mobile" },
+  "2126603909": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "Power 9" },
+  "918968029": { triggerCol: 7, triggerValue: "ယူပြီး", sheetName: "Hsi Hseng Mobile" }
+};
+
+// ---------------------- Customer bot (Mahar Shwe) ----------------------
+const HISTORY_SS_ID = "1rQSNW5FE45SaR0M1pk8h_d4PORyao_noFpKqb-s2Res";
+const MAHAR_SHWE_ID = "1977354621";
+const CUSTOMER_SHEET_CONFIG = {
+  "1977354621": { triggerCol: 7, triggerValue: "Done", sheetName: "Mahar Shwe" }
+};
+
+// ==================== TRAINING SYSTEM CONFIGURATION ====================
+const TRAINING_SHEET_ID = "1PRKc4GpgkzxqP6TJaIZmo-Yc37UR50XASiDpD49F_XU";
+const TRAINING_SHEET_NAME = "Bot Training Data";
+const PENDING_TRAINING_SHEET_NAME = "Pending Training Questions"; // SINGLE DECLARATION
+
+// Training Sheet Columns
+const TRAINING_COL = {
+  QUESTION_MY: 0,    // Question in Myanmar
+  QUESTION_EN: 1,    // Question in English  
+  ANSWER_MY: 2,      // Answer in Myanmar
+  ANSWER_EN: 3,      // Answer in English
+  CATEGORY: 4,       // Category (Price, Repair, Contact, etc.)
+  KEYWORDS: 5,       // Keywords for matching
+  USAGE_COUNT: 6,    // How many times used
+  LAST_USED: 7       // Last used date
+};
+
+// Pending Training Sheet Columns
+const PENDING_COL = {
+  QUESTION: 0,      // Customer's question
+  CHAT_ID: 1,       // Customer's chat ID
+  TIMESTAMP: 2,     // When question was asked
+  STATUS: 3,        // "Pending", "Answered", "Ignored"
+  ANSWER: 4,        // Answer (filled by admin)
+  CATEGORY: 5,      // Category (filled by admin)
+  KEYWORDS: 6       // Keywords (filled by admin)
+};
+
+// ==================== HELPER FUNCTIONS ====================
+function getServiceSheet() {
+  const ss = SpreadsheetApp.openById(SERVICE_SPREADSHEET_ID);
+  return ss.getSheetByName(SERVICE_SHEET_NAME);
+}
+
+function getMasterSheets() {
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID);
+  const sheets = ss.getSheets();
+  const result = [];
+  for (let sheet of sheets) {
+    const gid = sheet.getSheetId();
+    if (MASTER_SHEET_CONFIG[gid]) {
+      result.push({ sheet, config: MASTER_SHEET_CONFIG[gid], gid });
+    }
+  }
+  return result;
+}
+
+function findRepairId(repairId) {
+  const masterSheets = getMasterSheets();
+  for (let ms of masterSheets) {
+    const sheet = ms.sheet, config = ms.config, data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const idCell = row[config.repairIdCol];
+      if (idCell && idCell.toString().toLowerCase() === repairId.toLowerCase()) {
+        let model = config.modelCols.length === 1 ? row[config.modelCols[0]] || "" : config.modelCols.map(col => row[col] || "").join(" ").trim();
+        return {
+          found: true,
+          data: {
+            repairId: idCell.toString(),
+            model: model,
+            ownerName: row[config.ownerNameCol] || "",
+            shopName: config.sheetName,
+            issue: row[config.issueCol] || ""
+          }
+        };
+      }
+    }
+  }
+  return { found: false };
+}
+
+function addServiceEntry(repairId, staffName, masterData) {
+  const sheet = getServiceSheet();
+  const now = new Date();
+  const formattedDate = Utilities.formatDate(now, "GMT+6:30", "dd/MM/yyyy HH:mm");
+  sheet.appendRow([
+    formattedDate, staffName, masterData.model, masterData.issue,
+    masterData.ownerName, "Pending", repairId, "", "", ""
+  ]);
+  return sheet.getLastRow();
+}
+
+function completeServiceEntry(rowNum) {
+  const sheet = getServiceSheet();
+  const completedDate = Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy HH:mm");
+  sheet.getRange(rowNum, SERVICE_COL.STATUS + 1).setValue("Done");
+  sheet.getRange(rowNum, SERVICE_COL.COMPLETED_DATE + 1).setValue(completedDate);
+  sheet.getRange(rowNum, SERVICE_COL.STATUS + 1).setBackground("#00FF00");
+}
+
+function getPendingJobs(staffName) {
+  const sheet = getServiceSheet(), data = sheet.getDataRange().getValues(), pending = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[SERVICE_COL.STAFF] === staffName && row[SERVICE_COL.STATUS] === "Pending")
+      pending.push({ row: i+1, repairId: row[SERVICE_COL.REPAIR_ID], model: row[SERVICE_COL.MODEL], owner: row[SERVICE_COL.OWNER], repairType: row[SERVICE_COL.REPAIR_TYPE], date: row[SERVICE_COL.DATE] });
+  }
+  return pending;
+}
+
+function getTodayJobs(staffName) {
+  const sheet = getServiceSheet(), data = sheet.getDataRange().getValues(), todayStr = Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy"), jobs = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    let rowDate = row[SERVICE_COL.DATE] instanceof Date ? Utilities.formatDate(row[SERVICE_COL.DATE], "GMT+6:30", "dd/MM/yyyy") : row[SERVICE_COL.DATE].toString().split(" ")[0];
+    if (rowDate === todayStr && row[SERVICE_COL.STAFF] === staffName)
+      jobs.push({ row: i+1, repairId: row[SERVICE_COL.REPAIR_ID], model: row[SERVICE_COL.MODEL], owner: row[SERVICE_COL.OWNER], repairType: row[SERVICE_COL.REPAIR_TYPE], status: row[SERVICE_COL.STATUS] });
+  }
+  return jobs;
+}
+
+function getMonthlySummary(staffName) {
+  const sheet = getServiceSheet(), data = sheet.getDataRange().getValues(), currentMonth = Utilities.formatDate(new Date(), "GMT+6:30", "/MM/yyyy");
+  let totalJobs = 0, pendingJobs = 0, totalCommission = 0;
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[SERVICE_COL.STAFF] !== staffName) continue;
+    let entryDate = row[SERVICE_COL.DATE];
+    let entryMonth = entryDate instanceof Date ? Utilities.formatDate(entryDate, "GMT+6:30", "/MM/yyyy") : (() => { let p = entryDate.toString().split(" ")[0].split("/"); return p.length === 3 ? `/${p[1]}/${p[2]}` : ""; })();
+    if (entryMonth === currentMonth) {
+      totalJobs++;
+      if (row[SERVICE_COL.STATUS] === "Pending") pendingJobs++;
+      else if (row[SERVICE_COL.STATUS] === "Done") totalCommission += parseFloat(row[SERVICE_COL.COMMISSION]) || 0;
+    }
+  }
+  return { totalJobs, pendingJobs, completedJobs: totalJobs - pendingJobs, totalCommission };
+}
+
+function notifyAdmin(message) { sendTelegram(ADMIN_CHAT_ID, message); }
+
+// ==================== TELEGRAM HELPERS ====================
+function sendTelegram(chatId, text, kb = null, parseMode = "Markdown") {
+  const payload = { chat_id: chatId, text: text };
+  if (kb) payload.reply_markup = kb;
+  if (parseMode) payload.parse_mode = parseMode;
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendMessage`, {
+    method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
+  });
+}
+
+function sendTelegramWithButtons(chatId, text, buttons, parseMode = "Markdown") {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendMessage`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: parseMode, reply_markup: { inline_keyboard: buttons } })
+  });
+}
+
+function sendTelegramPhoto(chatId, url, caption, parseMode = "Markdown") {
+  const payload = { chat_id: chatId, photo: url, caption: caption };
+  if (parseMode) payload.parse_mode = parseMode;
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendPhoto`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify(payload), muteHttpExceptions: true
+  });
+}
+
+function editMessage(chatId, messageId, newText, parseMode = "Markdown") {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/editMessageText`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({ chat_id: chatId, message_id: messageId, text: newText, parse_mode: parseMode })
+  });
+}
+
+// ==================== TRAINING SYSTEM FUNCTIONS ====================
+
+function getTrainingSheet() {
+  const ss = SpreadsheetApp.openById(TRAINING_SHEET_ID);
+  return ss.getSheetByName(TRAINING_SHEET_NAME) || createTrainingSheet();
+}
+
+function createTrainingSheet() {
+  const ss = SpreadsheetApp.openById(TRAINING_SHEET_ID);
+  const sheet = ss.insertSheet(TRAINING_SHEET_NAME);
+  
+  const headers = [
+    "Question (မြန်မာ)",
+    "Question (English)", 
+    "Answer (မြန်မာ)",
+    "Answer (English)",
+    "Category",
+    "Keywords",
+    "Usage Count",
+    "Last Used"
+  ];
+  
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  sheet.setFrozenRows(1);
+  
+  const sampleData = [
+    ["ဖုန်းပြင်ဖို့ ဘယ်လောက်ကျသလဲ", "How much to repair phone?", "ဖုန်းအမျိုးအစားပေါ်မူတည်ပါတယ်။ ကျေးဇူးပြု၍ ဖုန်းအမျိုးအစားပြောပါ။", "Depends on phone model. Please tell me the phone model.", "Price", "ဈေးနှုန်း,ပြင်ခ,ကုန်ကျငွေ", 0, ""],
+    ["ဘယ်နှစ်နာရီကြာမလဲ", "How long will it take?", "ပြဿနာအလိုက် ၁ ရက်မှ ၃ ရက်အထိကြာနိုင်ပါတယ်။", "Depending on problem, 1 to 3 days.", "Repair Time", "ကြာချိန်,အချိန်,နာရီ", 0, ""],
+    ["ဆိုင်ဘယ်မှာလဲ", "Where is the shop?", "ဆီဆိုင်မြို့မှာပါ။ Google Maps: https://maps.app.goo.gl/xxxx", "In Si Seng town. Google Maps: https://maps.app.goo.gl/xxxx", "Location", "နေရာ,လိပ်စာ,ဆိုင်", 0, ""],
+    ["ဘယ်လိုဆက်သွယ်ရမလဲ", "How to contact?", "Telegram: @Mylifemychoice68\nPhone: 09xxxxxxxx", "Telegram: @Mylifemychoice68\nPhone: 09xxxxxxxx", "Contact", "ဖုန်း,ဆက်သွယ်,တယ်လီဂရမ်", 0, ""]
+  ];
+  
+  sheet.getRange(2, 1, sampleData.length, sampleData[0].length).setValues(sampleData);
+  
+  return sheet;
+}
+
+function findTrainingAnswer(question) {
+  const sheet = getTrainingSheet();
+  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) return null;
+  
+  const questionLower = question.toLowerCase();
+  let bestMatch = null;
+  let bestScore = 0;
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const questionMy = row[TRAINING_COL.QUESTION_MY] || "";
+    const questionEn = row[TRAINING_COL.QUESTION_EN] || "";
+    const keywords = row[TRAINING_COL.KEYWORDS] || "";
+    
+    let score = 0;
+    
+    if (questionLower === questionMy.toLowerCase()) {
+      score = 100;
+    } else if (questionLower === questionEn.toLowerCase()) {
+      score = 90;
+    }
+    
+    if (keywords) {
+      const keywordList = keywords.split(",").map(k => k.trim().toLowerCase());
+      for (const keyword of keywordList) {
+        if (questionLower.includes(keyword)) {
+          score = Math.max(score, 70 + (keyword.length * 2));
+        }
+      }
+    }
+    
+    if (questionMy.toLowerCase().includes(questionLower) || 
+        questionLower.includes(questionMy.toLowerCase())) {
+      score = Math.max(score, 60);
+    }
+    
+    if (questionEn.toLowerCase().includes(questionLower) ||
+        questionLower.includes(questionEn.toLowerCase())) {
+      score = Math.max(score, 50);
+    }
+    
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = {
+        row: i + 1,
+        questionMy: questionMy,
+        questionEn: questionEn,
+        answerMy: row[TRAINING_COL.ANSWER_MY] || "",
+        answerEn: row[TRAINING_COL.ANSWER_EN] || "",
+        category: row[TRAINING_COL.CATEGORY] || "",
+        score: score
+      };
+    }
+  }
+  
+  if (bestMatch && bestMatch.score >= 40) {
+    updateTrainingUsage(bestMatch.row);
+  }
+  
+  return bestMatch && bestMatch.score >= 40 ? bestMatch : null;
+}
+
+function updateTrainingUsage(rowNum) {
+  const sheet = getTrainingSheet();
+  const usageCount = sheet.getRange(rowNum, TRAINING_COL.USAGE_COUNT + 1).getValue() || 0;
+  const now = new Date();
+  
+  sheet.getRange(rowNum, TRAINING_COL.USAGE_COUNT + 1).setValue(usageCount + 1);
+  sheet.getRange(rowNum, TRAINING_COL.LAST_USED + 1).setValue(now);
+}
+
+function addTrainingData(questionMy, questionEn, answerMy, answerEn, category, keywords) {
+  const sheet = getTrainingSheet();
+  const now = new Date();
+  
+  sheet.appendRow([
+    questionMy,
+    questionEn,
+    answerMy, 
+    answerEn,
+    category,
+    keywords,
+    0,
+    now
+  ]);
+  
+  return sheet.getLastRow();
+}
+
+function getTrainingStats() {
+  const sheet = getTrainingSheet();
+  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) {
+    return {
+      totalEntries: 0,
+      categories: {},
+      mostUsed: []
+    };
+  }
+  
+  const categories = {};
+  const usageData = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const category = row[TRAINING_COL.CATEGORY] || "Uncategorized";
+    const usageCount = row[TRAINING_COL.USAGE_COUNT] || 0;
+    
+    categories[category] = (categories[category] || 0) + 1;
+    
+    if (usageCount > 0) {
+      usageData.push({
+        question: row[TRAINING_COL.QUESTION_MY] || row[TRAINING_COL.QUESTION_EN],
+        usageCount: usageCount,
+        lastUsed: row[TRAINING_COL.LAST_USED]
+      });
+    }
+  }
+  
+  usageData.sort((a, b) => b.usageCount - a.usageCount);
+  
+  return {
+    totalEntries: data.length - 1,
+    categories: categories,
+    mostUsed: usageData.slice(0, 10)
+  };
+}
+
+// ==================== AUTO-TRAINING FUNCTIONS ====================
+
+function getPendingTrainingSheet() {
+  const ss = SpreadsheetApp.openById(TRAINING_SHEET_ID);
+  return ss.getSheetByName(PENDING_TRAINING_SHEET_NAME) || createPendingTrainingSheet();
+}
+
+function createPendingTrainingSheet() {
+  const ss = SpreadsheetApp.openById(TRAINING_SHEET_ID);
+  const sheet = ss.insertSheet(PENDING_TRAINING_SHEET_NAME);
+  
+  const headers = [
+    "Question",
+    "Chat ID",
+    "Timestamp",
+    "Status",
+    "Answer",
+    "Category",
+    "Keywords"
+  ];
+  
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+  sheet.setFrozenRows(1);
+  
+  return sheet;
+}
+
+function savePendingQuestion(question, chatId) {
+  const sheet = getPendingTrainingSheet();
+  const now = new Date();
+  
+  sheet.appendRow([
+    question,
+    chatId,
+    now,
+    "Pending",
+    "", "", ""
+  ]);
+  
+  const row = sheet.getLastRow();
+  
+  notifyAdmin(`❓ *New Pending Training Question*\n\nQ: ${question}\n👤 Chat ID: ${chatId}\n📝 Row: ${row}\n\nUse /pendingtrain to view.`);
+  
+  return row;
+}
+
+function getPendingQuestions() {
+  const sheet = getPendingTrainingSheet();
+  const data = sheet.getDataRange().getValues();
+  
+  if (data.length <= 1) return [];
+  
+  const pending = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[PENDING_COL.STATUS] === "Pending") {
+      pending.push({
+        row: i + 1,
+        question: row[PENDING_COL.QUESTION],
+        chatId: row[PENDING_COL.CHAT_ID],
+        timestamp: row[PENDING_COL.TIMESTAMP]
+      });
+    }
+  }
+  
+  return pending;
+}
+
+function answerPendingQuestion(rowNum, answer, category, keywords) {
+  const sheet = getPendingTrainingSheet();
+  
+  sheet.getRange(rowNum, PENDING_COL.STATUS + 1).setValue("Answered");
+  sheet.getRange(rowNum, PENDING_COL.ANSWER + 1).setValue(answer);
+  sheet.getRange(rowNum, PENDING_COL.CATEGORY + 1).setValue(category);
+  sheet.getRange(rowNum, PENDING_COL.KEYWORDS + 1).setValue(keywords);
+  
+  const question = sheet.getRange(rowNum, PENDING_COL.QUESTION + 1).getValue();
+  addTrainingData(question, "", answer, "", category, keywords);
+  
+  return true;
+}
+
+// ==================== UPDATED TRAINING QUERY HANDLER ====================
+
+function handleTrainingQueryWithAutoSave(text, chatId) {
+  if (!text) return { handled: false, reason: "empty" };
+
+  // List of commands/menu/state texts to ignore
+  const ignoredExactTexts = [
+    "ယနေ့ ယူပြီး",
+    "ယနေ့ အပ်ထားသောအလုံးများ",
+    "ပြင်ပြီးမယူရသေးသော",
+    "ငွေရှင်းရန် စုပေါင်း",
+    "VPN Premium ဝယ်ရန်",
+    "🛡️ VPN Premium ဝယ်မည်",
+    "🔍 Voucher ဖြင့် ဖုန်းပြင်အခြေအနေကြည့်မည်",
+    "📞 Contact ဆက်သွယ်မည်",
+    "🏠 Main Menu",
+    "Home",
+    "VPN Premiun ယူမည်",
+    "မှန်ရှိမရှိစုံစမ်းရန်"
+  ];
+
+  const looksLikeVoucher = /^0\d{2,}$/.test(text);
+  const looksLikeMenuTap = text.includes("Main Menu") || text === "Home" || text === "🏠 Home";
+
+  if (text.startsWith("/") ||
+      REPAIR_ID_PATTERN.test(text) ||
+      looksLikeVoucher ||
+      looksLikeMenuTap ||
+      text.toLowerCase().includes("vpn") ||
+      text.toLowerCase().includes("voucher") ||
+      text.length < 3 ||
+      ignoredExactTexts.includes(text)) {
+    return { handled: false, reason: "not_training_query" };
+  }
+  
+  const trainingAnswer = findTrainingAnswer(text);
+  
+  if (trainingAnswer) {
+    const response = `🤖 *Bot Answer* (${trainingAnswer.category})\n\n${trainingAnswer.answerMy}\n\n_Confidence: ${Math.round(trainingAnswer.score)}%_`;
+    sendTelegram(chatId, response);
+    
+    if (trainingAnswer.score < 70) {
+      notifyAdmin(`🔍 *Low Confidence Match*\n\nQ: ${text}\nA: ${trainingAnswer.answerMy.substring(0, 100)}...\nScore: ${Math.round(trainingAnswer.score)}%`);
+    }
+    
+    return { handled: true, type: "training_answer" };
+  }
+  
+  const pendingRow = savePendingQuestion(text, chatId);
+  
+  const customerResponse = `🤖 *မင်္ဂလာပါ!*\n\nကျေးဇူးပြု၍ ခေတ္တစောင့်ပါ။ သင့်မေးခွန်းကို ကျွန်တော်မှတ်သားထားပါပြီ။\nဆိုင်ရှင်က မကြာမီ အဖြေပေးပါမည်။\n\nမေးခွန်း: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`;
+  
+  sendTelegram(chatId, customerResponse);
+  return { handled: true, type: "pending_saved", row: pendingRow };
+}
+
+// ==================== UPDATED ADMIN COMMANDS ====================
+
+function handleTrainingAdminCommandWithAuto(chatId, text, isAdmin) {
+  if (!isAdmin) return false;
+  
+  if (text === "/trainstats") {
+    const stats = getTrainingStats();
+    
+    let message = `📊 *Training Database Stats*\n\n`;
+    message += `📝 Total Entries: ${stats.totalEntries}\n\n`;
+    
+    if (stats.totalEntries > 0) {
+      message += `📂 Categories:\n`;
+      for (const [category, count] of Object.entries(stats.categories)) {
+        message += `• ${category}: ${count}\n`;
+      }
+      
+      if (stats.mostUsed.length > 0) {
+        message += `\n🏆 Most Used Answers:\n`;
+        stats.mostUsed.forEach((item, index) => {
+          message += `${index + 1}. ${item.question.substring(0, 30)}... (${item.usageCount}x)\n`;
+        });
+      }
+    } else {
+      message += `No training data yet. Use /addtrain to add data.`;
+    }
+    
+    sendTelegram(chatId, message);
+    return true;
+  }
+  
+  if (text === "/pendingtrain") {
+    const pending = getPendingQuestions();
+    
+    if (pending.length === 0) {
+      sendTelegram(chatId, `📭 *No pending training questions*`);
+      return true;
+    }
+    
+    let message = `📋 *Pending Training Questions (${pending.length})*\n\n`;
+    
+    pending.forEach((item, index) => {
+      message += `${index + 1}. *Row ${item.row}*\n`;
+      message += `   Q: ${item.question.substring(0, 50)}${item.question.length > 50 ? '...' : ''}\n`;
+      message += `   👤: ${item.chatId}\n`;
+      message += `   ⏰: ${Utilities.formatDate(item.timestamp, "GMT+6:30", "dd/MM HH:mm")}\n\n`;
+    });
+    
+    message += `\n💡 *How to answer:*\n/answertrain <row>|<answer>|<category>|<keywords>\nExample: /answertrain 2|ဖုန်းအမျိုးအစားပေါ်မူတည်ပါတယ်|Price|ဈေးနှုန်း,ပြင်ခ`;
+    sendTelegram(chatId, message);
+    return true;
+  }
+  
+  if (text.startsWith("/answertrain ")) {
+    const parts = text.substring(13).split("|");
+    if (parts.length >= 3) {
+      const rowNum = parseInt(parts[0]);
+      const answer = parts[1];
+      const category = parts[2];
+      const keywords = parts[3] || "";
+      
+      if (isNaN(rowNum) || rowNum < 2) {
+        sendTelegram(chatId, "❌ Invalid row number");
+        return true;
+      }
+      
+      const success = answerPendingQuestion(rowNum, answer, category, keywords);
+      
+      if (success) {
+        sendTelegram(chatId, `✅ *Answer added to training!*\n\nRow: ${rowNum}\nCategory: ${category}\nKeywords: ${keywords || "None"}`);
+        
+        const sheet = getPendingTrainingSheet();
+        const question = sheet.getRange(rowNum, PENDING_COL.QUESTION + 1).getValue();
+        const originalChatId = sheet.getRange(rowNum, PENDING_COL.CHAT_ID + 1).getValue();
+        
+        if (originalChatId) {
+          try {
+            sendTelegram(originalChatId, `🤖 *အဖြေရပါပြီ!*\n\nမေးခွန်း: "${question.substring(0, 80)}${question.length > 80 ? '...' : ''}"\n\nအဖြေ: ${answer}`);
+          } catch (e) {}
+        }
+      }
+      return true;
+    } else {
+      sendTelegram(chatId, "❌ Format: /answertrain <row>|<answer>|<category>|<keywords>");
+      return true;
+    }
+  }
+  
+  if (text.startsWith("/addtrain ")) {
+    const parts = text.substring(10).split("|");
+    if (parts.length >= 4) {
+      const [questionMy, answerMy, category, keywords] = parts;
+      
+      const row = addTrainingData(
+        questionMy.trim(),
+        "",
+        answerMy.trim(),
+        "",
+        category.trim(),
+        keywords.trim()
+      );
+      
+      sendTelegram(chatId, `✅ Training data added (Row ${row})`);
+      return true;
+    } else {
+      sendTelegram(chatId, "❌ Format: /addtrain question|answer|category|keywords");
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// ==================== ADMIN BOT FUNCTIONS ====================
+function sendMainMenu(chatId, msg) {
+  const keyboard = {
+    keyboard: [
+      ["VPN Premium ဝယ်ရန်"],
+      ["ယနေ့ ယူပြီး", "ယနေ့ အပ်ထားသောအလုံးများ"],
+      ["ပြင်ပြီးမယူရသေးသော", "ငွေရှင်းရန် စုပေါင်း"]
+    ],
+    resize_keyboard: true
+  };
+  sendTelegram(chatId, msg, keyboard);
+}
+
+function sendReport(chatId, type, title) {
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID), todayStr = Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy");
+  let reportMsg = `*${title}*\n\n`, totalCount = 0, grandTotalMoney = 0;
+  const cIdStr = chatId.toString();
+  let authorizedSheetIds = cIdStr === ADMIN_CHAT_ID ? Object.keys(REPORT_SHEET_CONFIG) : (cIdStr === AC_ADMIN_ID ? ["796808448"] : []);
+  if (authorizedSheetIds.length === 0) return sendTelegram(chatId, "⚠️ ခွင့်ပြုချက်မရှိပါ။");
+  ss.getSheets().forEach(sh => {
+    const sId = sh.getSheetId().toString();
+    if (authorizedSheetIds.indexOf(sId) !== -1) {
+      const config = REPORT_SHEET_CONFIG[sId];
+      const data = sh.getDataRange().getValues();
+      let tempMsg = "", sheetCount = 0, sheetMoney = 0;
+      data.forEach((row, i) => {
+        if (i === 0) return;
+        const dateA = row[0] instanceof Date ? Utilities.formatDate(row[0], "GMT+6:30", "dd/MM/yyyy") : (row[0] || "").toString();
+        const statusE = (row[4] || "").toString().trim(), priceF = parseFloat(row[5]) || 0;
+        const statusG = (row[6] || "").toString().trim(), paidStatusH = (row[7] || "").toString().trim();
+        const dateI = row[8] instanceof Date ? Utilities.formatDate(row[8], "GMT+6:30", "dd/MM/yyyy") : (row[8] || "").toString();
+        if (paidStatusH === "Paid" || paidStatusH === "ရှင်းပြီး") return;
+        let match = false;
+        if (type === "ယနေ့ ယူပြီး") {
+          const targetStatus = sId === "1977354621" ? "Done" : "ယူပြီး";
+          if (dateI === todayStr && statusG === targetStatus) match = true;
+        } else if (type === "ယနေ့ အပ်ထားသောအလုံးများ") {
+          if (dateA === todayStr) match = true;
+        } else if (type === "ပြင်ပြီးမယူရသေးသော") {
+          if (statusE === "ပြင်ပြီး" && (statusG === "မယူရသေး" || statusG === "မယူရသေးသော")) match = true;
+        } else if (type === "ငွေရှင်းရန် စုပေါင်း") {
+          if (statusE === "ပြင်ပြီး" && statusG === "ယူပြီး") match = true;
+        }
+        if (match) {
+          sheetCount++; totalCount++; sheetMoney += priceF; grandTotalMoney += priceF;
+          tempMsg += ` ${sheetCount}. ${row[1] || "-"} | ${row[2] || "-"} [${priceF}]\n`;
+        }
+      });
+      if (sheetCount > 0) {
+        reportMsg += `🏪 *${config.sheetName}*\n${tempMsg}💰 ဆိုင်စုစုပေါင်း: *${sheetMoney}*\n\n`;
+      }
+    }
+  });
+  reportMsg += `🔢 စုစုပေါင်း: ${totalCount} လုံး\n`;
+  if (type === "ငွေရှင်းရန် စုပေါင်း" || type === "ယနေ့ ယူပြီး") reportMsg += `💵 အားလုံးပေါင်းရငွေ: *${grandTotalMoney}* ကျပ်`;
+  sendTelegram(chatId, reportMsg);
+}
+
+// ==================== SERVICE BOT FLOW ====================
+function processRepairId(chatId, repairId, staffName) {
+  const r = findRepairId(repairId);
+  if (!r.found) {
+    sendTelegram(chatId, "❌ Repair ID မတွေ့ပါ။ ကျေးဇူးပြု၍ ပြန်စစ်ပါ။");
+    return sendTelegramWithButtons(chatId, "ပြန်လည်ကြိုးစားရန် Repair ID ရိုက်ထည့်ပါ သို့မဟုတ် Home နှိပ်ပါ။", [[{ text: "🏠 Home", callback_data: "home" }]]);
+  }
+  const tempData = { repairId, masterData: r.data };
+  PropertiesService.getScriptProperties().setProperty(`state_${chatId}`, "CONFIRM_REPAIR|" + JSON.stringify(tempData));
+  sendTelegramWithButtons(chatId, `🔍 *တွေ့ရှိချက်*\n\n🆔 Repair ID: ${r.data.repairId}\n🏪 Shop: ${r.data.shopName}\n📱 Model: ${r.data.model}\n👤 Owner: ${r.data.ownerName}\n🔧 Issue: ${r.data.issue}\n\nဤ Repair ID ဖြင့် စရင်းသွင်းမလား?`, [
+    [{ text: "✅ ပြင်မယ်", callback_data: "confirm_yes" }],
+    [{ text: "❌ Cancel", callback_data: "confirm_no" }],
+    [{ text: "🏠 Home", callback_data: "home" }]
+  ]);
+}
+
+function showServiceMenu(chatId, staffName) {
+  sendTelegramWithButtons(chatId, `🙏 မင်္ဂလာပါ ဆရာ *${staffName}*\nဘာလုပ်ဆောင်လိုပါသလဲခင်ဗျာ?`, [
+    [{ text: "📝 စရင်းသွင်းရန်", callback_data: "menu_new_entry" }],
+    [{ text: "📅 ဒီနေ့ ပြင်ထားတဲ့အလုံးများ", callback_data: "menu_today" }],
+    [{ text: "⏳ Pending အလုံးများ", callback_data: "menu_pending" }],
+    [{ text: "💰 ဒီလစာရင်း + Commission", callback_data: "menu_month" }]
+  ]);
+}
+
+// ==================== CUSTOMER BOT FUNCTIONS ====================
+function showCustomerMenu(chatId) {
+  const mainMenu = {
+    keyboard: [
+      [{ text: "🔍 Voucher ဖြင့် ဖုန်းပြင်အခြေအနေကြည့်မည်" }],
+      [{ text: "🛡️ VPN Premium ဝယ်မည်" }, { text: "📞 Contact ဆက်သွယ်မည်" }]
+    ],
+    resize_keyboard: true
+  };
+  sendTelegram(chatId, "မင်္ဂလာပါ Mahar Shwe Mobile မှ ကြိုဆိုပါတယ်။ \nအောက်ပါ Menu များမှ ရွေးချယ်ပေးပါခင်ဗျာ။", mainMenu);
+}
+
+function voucherLookup(chatId, voucher) {
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID);
+  const sheet = ss.getSheets().find(s => s.getSheetId().toString() === MAHAR_SHWE_ID);
+  if (!sheet) return sendTelegram(chatId, "❌ စနစ်ချို့ယွင်းနေပါသည်။");
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][1].toString().trim() === voucher.trim()) {
+      const status = rows[i][6].toString().trim();
+      const customerName = rows[i][2];
+      let responseMsg = "";
+      if (status === "Done") {
+        responseMsg = "🎊 *ဝမ်းသာစရာ သတင်းကောင်းပါခင်ဗျာ!* 🎊\n\n" +
+        "👤 လူကြီးမင်း နာမည် : " + customerName + "\n" +
+        "🎫 Voucher No. : " + rows[i][1] + "\n" +
+        "✅ အခြေအနေ : *ပြင်ဆင်ပြီးပါပြီ*\n\n" +
+        "လူကြီးမင်းရဲ့ ဖုန်းလေးကို Mahar Shwe Mobile ဆိုင်မှာ အခုပဲ လာရောက်ထုတ်ယူနိုင်ပါပြီ။ **မှတ်ချက်** Voucher ပါယူလာပေးပါ Voucher ပါမှ ဖုန်းထုတ်ပေးပါသည်✨";
+      } else {
+        responseMsg = "🛠️ *ဖုန်းပြင်ဆင်နေဆဲဖြစ်ပါတယ်ခင်ဗျာ* 🛠️\n\n" +
+        "👤 လူကြီးမင်း နာမည် : " + customerName + "\n" +
+        "🎫 Voucher No. : " + rows[i][1] + "\n" +
+        "🏷️ အခြေအနေ : *" + status + "*\n\n" +
+        "လူကြီးမင်းရဲ့ ဖုန်းလေးကို အကောင်းဆုံးဖြစ်အောင် ဂရုစိုက်ပြီး ပြင်ဆင်ပေးနေလို့ ခေတ္တခဏလောက် ထပ်မံစောင့်ဆိုင်းပေးဖို့ တောင်းပန်အပ်ပါတယ်ခင်ဗျာ။ 🥺 \nအမြန်ဆုံး ပြီးစီးအောင် ဆောင်ရွက်ပေးနေပါတယ်ဗျ။";
+      }
+      sendTelegram(chatId, responseMsg);
+      return;
+    }
+  }
+  sendTelegram(chatId, "❌ စိတ်မရှိပါနဲ့ခင်ဗျာ၊ Voucher နံပါတ် '" + voucher + "' ကို မတွေ့ရှိလို့ပါ။ \n'0' ပါဝင်တဲ့ နံပါတ်ကို မှန်အောင် ပြန်ရိုက်ပေးပါဦးဗျ။");
+}
+
+function getVPNSheet() {
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID);
+  return ss.getSheets().find(s => s.getSheetId().toString() === VPN_SHEET_GID);
+}
+
+function getVPNInstructions() {
+  return "\n\n📖 *အသုံးပြုနည်း လမ်းညွှန် (How To Configure)*\n" +
+    "1️⃣ *Outline:* App ကိုဖွင့်ပါ -> '+' ကိုနှိပ်ပါ -> Key ကို Paste လုပ်ပြီး 'Add Server' နှိပ်ပါ။\n" +
+    "2️⃣ *Hiddify:* App ကိုဖွင့်ပါ -> '+' (New Profile) ကိုနှိပ်ပါ -> 'Add from Clipboard' ကိုရွေးပါ။\n" +
+    "3️⃣ *V2Box:* 'Configs' ထဲသွားပါ -> '+' ကိုနှိပ်ပါ -> 'Import v2ray uri from clipboard' ကိုနှိပ်ပါ။\n\n" +
+    "💡 အထက်ပါ App (၃) မျိုးထဲမှ မိမိ အဆင်ပြေရာ/ကြိုက်နှစ်သက်ရာ App တစ်ခုခုတွင် ထည့်သွင်းအသုံးပြုနိုင်ပါသည်။";
+}
+
+function getVPNExpiryLabel(planType) {
+  if (planType === VPN_PLAN.FREE) return "2 Days";
+  if (planType === VPN_PLAN.ONE_MONTH) return "1 Month";
+  if (planType === VPN_PLAN.TWO_MONTHS) return "2 Months";
+  return "Unknown";
+}
+
+function findAvailableVPNRow(planType) {
+  const sheet = getVPNSheet();
+  if (!sheet) return null;
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const key = (row[VPN_COL.KEY] || "").toString().trim();
+    const status = (row[VPN_COL.STATUS] || "").toString().trim();
+    const rowPlan = (row[VPN_COL.PLAN_TYPE] || "").toString().trim();
+    if (key && rowPlan === planType && status === VPN_STATUS.AVAILABLE) {
+      return { rowNum: i + 1, rowData: row, sheet };
+    }
+  }
+  return null;
+}
+
+function buildVPNKeyPayload(customerName, planType, rawKey) {
+  const finalKey = rawKey + "&" + customerName;
+  return {
+    customerName,
+    planType,
+    rawKey,
+    finalKey,
+    expiry: getVPNExpiryLabel(planType),
+    instructions: getVPNInstructions(),
+    qrUrl: "https://quickchart.io/qr?text=" + encodeURIComponent(finalKey) + "&size=400&margin=1"
+  };
+}
+
+function maybeProcessVPNPayloadWithAI(payload) {
+  if (!AI_MODEL_ENABLED || !AI_MODEL_API_URL) return payload;
+  try {
+    const response = UrlFetchApp.fetch(AI_MODEL_API_URL, {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      headers: AI_MODEL_API_KEY ? { Authorization: "Bearer " + AI_MODEL_API_KEY } : {},
+      payload: JSON.stringify({ task: "vpn_payload", data: payload })
+    });
+    const result = JSON.parse(response.getContentText());
+    return result && result.data ? result.data : payload;
+  } catch (e) {
+    return payload;
+  }
+}
+
+function sendVPNDelivery(chatId, payload) {
+  const textMessage =
+    "🔐 VPN Key ထုတ်ပေးလိုက်ပါပြီ\n\n" +
+    "👤 User: " + payload.customerName + "\n" +
+    "📦 Plan: " + payload.planType + "\n" +
+    "⏳ Expired: " + payload.expiry + "\n\n" +
+    "🔑 Key:\n" + payload.finalKey + payload.instructions;
+
+  sendTelegram(chatId, textMessage, null, null);
+
+  try {
+    sendTelegramPhoto(chatId, payload.qrUrl, "📷 VPN QR Code");
+  } catch (e) {
+    sendTelegram(chatId, "⚠️ QR ပို့မရသေးပါ။ Key နဲ့ချိတ်သုံးလို့ရပါတယ်။", null, null);
+  }
+}
+
+function issueVPNFromRow(chatId, customerName, planType, rowInfo) {
+  const sheet = rowInfo.sheet;
+  const rowNum = rowInfo.rowNum;
+  const row = rowInfo.rowData;
+  const rawKey = (row[VPN_COL.KEY] || "").toString().trim();
+  if (!rawKey) {
+    sendTelegram(chatId, "❌ VPN Key မတွေ့ပါ။", null, null);
+    return false;
+  }
+
+  const finalKey = rawKey + "&" + customerName;
+  const qrUrl = "https://quickchart.io/qr?text=" + encodeURIComponent(finalKey) + "&size=400&margin=1";
+  const expiry = getVPNExpiryLabel(planType);
+  const instructions = getVPNInstructions();
+
+  sheet.getRange(rowNum, VPN_COL.REQUEST_TIME + 1).setValue(new Date()).setNumberFormat("dd/mm/yyyy HH:mm:ss");
+  sheet.getRange(rowNum, VPN_COL.STATUS + 1).setValue(VPN_STATUS.ISSUED);
+  sheet.getRange(rowNum, VPN_COL.USER_NAME + 1).setValue(customerName);
+
+  const textMessage =
+    "🔐 VPN Key ထုတ်ပေးလိုက်ပါပြီ\n\n" +
+    "👤 User: " + customerName + "\n" +
+    "📦 Plan: " + planType + "\n" +
+    "⏳ Expired: " + expiry + "\n\n" +
+    "🔑 Key:\n" + finalKey + instructions;
+
+  sendTelegram(chatId, textMessage, null, null);
+  sendTelegramPhoto(chatId, qrUrl, "VPN QR Code", null);
+  return true;
+}
+
+function showVPNPlanMenu(chatId) {
+  sendTelegramWithButtons(chatId, "🛡️ *VPN Plan များ*\n\nရွေးချယ်လိုသော plan ကိုနှိပ်ပါ။", [
+    [{ text: "1 Month - 3000 Ks", callback_data: "vpn_plan_1m" }],
+    [{ text: "2 Months - 5000 Ks", callback_data: "vpn_plan_2m" }],
+    [{ text: "Free Trial - 2 Day", callback_data: "vpn_plan_free" }]
+  ]);
+}
+
+function showVPNPaymentInfo(chatId, planType) {
+  const price = planType === VPN_PLAN.ONE_MONTH ? "3000 Ks" : "5000 Ks";
+  const planLabel = planType === VPN_PLAN.ONE_MONTH ? "1 Month" : "2 Months";
+  sendTelegram(chatId,
+    "💳 *Payment Information*\n\n" +
+    "📦 Selected Plan: *" + planLabel + "*\n" +
+    "💰 Price: *" + price + "*\n\n" +
+    "*Biller Information*\n" +
+    "👤 Name: " + VPN_BILLER_NAME + "\n" +
+    "📱 Phone: " + VPN_BILLER_PHONE + "\n" +
+    "🏦 Payment: " + VPN_PAYMENT_PLATFORM + "\n\n" +
+    "ငွေလွှဲပြီးရင် KBZ Pay receipt screenshot ပို့ပေးပါ။"
+  );
+}
+
+function startFreeVPNFlow(chatId) {
+  PropertiesService.getScriptProperties().setProperty(`state_${chatId}`, "WAITING_VPN_FREE_NAME");
+  sendTelegram(chatId, "📝 Free Trial အတွက် VPN အသုံးပြုမည့် နာမည်ကို ရိုက်ထည့်ပေးပါ။");
+}
+
+function handleFreeVPNName(chatId, customerName) {
+  const rowInfo = findAvailableVPNRow(VPN_PLAN.FREE);
+  if (!rowInfo) {
+    sendTelegram(chatId, "⚠️ Free Trial VPN Key မကျန်တော့ပါ။");
+    return;
+  }
+  issueVPNFromRow(chatId, customerName, VPN_PLAN.FREE, rowInfo);
+}
+
+function startPaidVPNFlow(chatId, planType) {
+  PropertiesService.getScriptProperties().setProperty(`state_${chatId}`, `WAITING_VPN_RECEIPT|${planType}`);
+  showVPNPaymentInfo(chatId, planType);
+}
+
+function sendTelegramPhotoWithButtons(chatId, photo, caption, buttons) {
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${MAIN_BOT_TOKEN}/sendPhoto`, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({
+      chat_id: chatId,
+      photo: photo,
+      caption: caption,
+      parse_mode: "Markdown",
+      reply_markup: { inline_keyboard: buttons }
+    })
+  });
+}
+
+function notifyAdminForVPNApproval(customerChatId, customerName, planType, fileId) {
+  const planLabel = planType === VPN_PLAN.ONE_MONTH ? "1M" : "2M";
+  const buttons = [[
+    { text: "✅ Approve", callback_data: `vpnapprove|${customerChatId}|${planLabel}|${encodeURIComponent(customerName)}` },
+    { text: "❌ Reject", callback_data: `vpnreject|${customerChatId}|${planLabel}|${encodeURIComponent(customerName)}` }
+  ]];
+  const caption = "💸 *VPN Payment Approval Request*\n\n" +
+    "👤 User: *" + customerName + "*\n" +
+    "🆔 Chat ID: `" + customerChatId + "`\n" +
+    "📦 Plan: *" + planLabel + "*\n\n" +
+    "Receipt screenshot ကိုစစ်ပြီး Approve / Reject နှိပ်ပါ။";
+  sendTelegramPhotoWithButtons(ADMIN_CHAT_ID, fileId, caption, buttons);
+}
+
+function doPost(e) {
+  
+  try {
+    const contents = JSON.parse(e.postData.contents);
+    if (contents.callback_query) {
+      handleCallback(contents.callback_query);
+      return;
+    }
+    if (!contents.message) return;
+
+    const message = contents.message;
+    const chatId = message.chat.id.toString();
+    const text = message.text ? message.text.trim() : "";
+
+    let staffName = null;
+    for (let name in staffChatIDs) {
+      if (staffChatIDs[name] === chatId) {
+        staffName = name;
+        break;
+      }
+    }
+    const isServiceStaff = (staffName !== null);
+    const isAdmin = (chatId === ADMIN_CHAT_ID || chatId === AC_ADMIN_ID);
+    const props = PropertiesService.getScriptProperties();
+    let userState = props.getProperty(`state_${chatId}`);
+
+    // ----- PRIORITY STATE HANDLING -----
+    if (userState === "WAITING_VPN_FREE_NAME" && text) {
+      handleFreeVPNName(chatId, text);
+      props.deleteProperty(`state_${chatId}`);
+      return;
+    }
+
+    if (userState && userState.startsWith("WAITING_VPN_RECEIPT|")) {
+      if (message.photo && message.photo.length > 0) {
+        const planType = userState.split("|")[1];
+        const customerName = message.from && (message.from.first_name || message.from.username) ? (message.from.first_name || message.from.username) : "Customer";
+        const largestPhoto = message.photo[message.photo.length - 1];
+        notifyAdminForVPNApproval(chatId, customerName, planType, largestPhoto.file_id);
+        sendTelegram(chatId, "✅ Receipt screenshot ရရှိပါပြီ။ Admin စစ်ပြီးတာနဲ့ VPN Key ထုတ်ပေးပါမယ်။");
+        props.deleteProperty(`state_${chatId}`);
+        return;
+      }
+      if (text) {
+        sendTelegram(chatId, "📸 KBZ Pay receipt screenshot ပုံပဲ ပို့ပေးပါ။");
+        return;
+      }
+    }
+
+    // ----- AUTO-TRAINING SYSTEM -----
+    const trainingResult = handleTrainingQueryWithAutoSave(text, chatId);
+    if (trainingResult.handled) return;
+
+    const trainingAdminHandled = handleTrainingAdminCommandWithAuto(chatId, text, isAdmin);
+    if (trainingAdminHandled) return;
+
+    // ----- 1. Admin bot -----
+    if (isAdmin && (text === "/start" || text === "/service" || text === "/repair")) {
+      sendMainMenu(chatId, "မင်္ဂလာပါ Mahar Shwe Mobile Admin မှ ကြိုဆိုပါတယ်။");
+      return;
+    }
+    if (isAdmin) {
+      const mainBtns = ["VPN Premium ဝယ်ရန်", "ယနေ့ ယူပြီး", "ယနေ့ အပ်ထားသောအလုံးများ", "ပြင်ပြီးမယူရသေးသော", "ငွေရှင်းရန် စုပေါင်း"];
+      if (mainBtns.indexOf(text) !== -1) {
+        if (text === "VPN Premium ဝယ်ရန်") {
+          props.deleteProperty(`state_${chatId}`);
+          showVPNPlanMenu(chatId);
+          return;
+        }
+        sendReport(chatId, text, `📊 ${text}`);
+        return;
+      }
+    }
+
+    // ----- 2. Staff service bot -----
+    if (isServiceStaff) {
+      if (text === "/service" || text === "/repair") {
+        showServiceMenu(chatId, staffName);
+        return;
+      }
+      if (REPAIR_ID_PATTERN.test(text)) {
+        processRepairId(chatId, text, staffName);
+        return;
+      }
+      if (userState === "WAIT_REPAIR_ID") {
+        processRepairId(chatId, text, staffName);
+        return;
+      }
+    }
+
+    // ----- 3. Customer bot -----
+    if (!isServiceStaff && !isAdmin) {
+      if (text === "/start") {
+        showCustomerMenu(chatId);
+        return;
+      }
+      if (text === "🛡️ VPN Premium ဝယ်မည်") {
+        props.deleteProperty(`state_${chatId}`);
+        showVPNPlanMenu(chatId);
+        return;
+      }
+      if (text === "🔍 Voucher ဖြင့် ဖုန်းပြင်အခြေအနေကြည့်မည်") {
+        props.setProperty(`state_${chatId}`, "VOUCHER_LOOKUP");
+        const backBtn = { keyboard: [[{ text: "🏠 Main Menu" }]], resize_keyboard: true };
+        sendTelegram(chatId, "Voucher နံပါတ်ကို ရိုက်ထည့်ပေးပါ။ \n(မှတ်ချက် - '0' နဲ့ စတဲ့ နံပါတ်ကို ရိုက်ပေးပါဗျ။ ဥပမာ - 0124)", backBtn);
+        return;
+      }
+      if (userState === "VOUCHER_LOOKUP") {
+        voucherLookup(chatId, text);
+        props.deleteProperty(`state_${chatId}`);
+        return;
+      }
+      if (text === "📞 Contact ဆက်သွယ်မည်") {
+        sendTelegram(chatId, "📍 *Mahar Shwe Mobile*\n\n🏠 နေရာ: ဆီဆိုင်မြို့\n💬 Telegram: @Mylifemychoice68");
+        return;
+      }
+      if (text === "🏠 Main Menu") {
+        showCustomerMenu(chatId);
+        return;
+      }
+    }
+
+    // ----- 4. Fallback for unrecognized messages -----
+    if (text && !text.startsWith("/")) {
+      sendTelegram(chatId, "🤖 *မင်္ဂလာပါ!*\n\nကျေးဇူးပြု၍ အောက်ပါ commands များကို သုံးပါ:\n• /start - Customer menu\n• /service - Staff menu (staff only)\n• Repair ID (MH0215) - Check repair status\n• Voucher number - Check phone status\n\nသို့မဟုတ် မေးခွန်းတစ်ခုခု မေးပါ။");
+    }
+
+  } catch (err) {
+    sendTelegram(ADMIN_CHAT_ID, "❌ Error: " + err.toString());
+  }
+}
+
+// ==================== CALLBACK HANDLER ====================
+function handleCallback(cb) {
+  const chatId = cb.message.chat.id.toString();
+  const data = cb.data;
+  const messageId = cb.message.message_id;
+
+  let staffName = null;
+  for (let name in staffChatIDs) {
+    if (staffChatIDs[name] === chatId) {
+      staffName = name;
+      break;
+    }
+  }
+  const isServiceStaff = (staffName !== null);
+  const props = PropertiesService.getScriptProperties();
+
+  if (data === "vpn_plan_free") {
+    startFreeVPNFlow(chatId);
+    return;
+  }
+  if (data === "vpn_plan_1m") {
+    startPaidVPNFlow(chatId, VPN_PLAN.ONE_MONTH);
+    return;
+  }
+  if (data === "vpn_plan_2m") {
+    startPaidVPNFlow(chatId, VPN_PLAN.TWO_MONTHS);
+    return;
+  }
+  if (data.startsWith("vpnapprove|")) {
+    const parts = data.split("|");
+    const customerChatId = parts[1];
+    const planType = parts[2];
+    const customerName = decodeURIComponent(parts.slice(3).join("|"));
+    const rowInfo = findAvailableVPNRow(planType);
+    if (!rowInfo) {
+      sendTelegram(chatId, "⚠️ ဒီ Plan အတွက် Available VPN Key မကျန်တော့ပါ။");
+      return;
+    }
+    issueVPNFromRow(customerChatId, customerName, planType, rowInfo);
+    editMessage(chatId, messageId, cb.message.text + "\n\n✅ *Approved & VPN ထုတ်ပေးပြီးပါပြီ*", "Markdown");
+    return;
+  }
+  if (data.startsWith("vpnreject|")) {
+    const parts = data.split("|");
+    const customerChatId = parts[1];
+    sendTelegram(customerChatId, "❌ Payment ကို verify မဖြစ်သေးပါ။ Screenshot ကိုပြန်စစ်ပြီး ထပ်ပို့ပေးပါ။");
+    editMessage(chatId, messageId, cb.message.text + "\n\n❌ *Rejected*", "Markdown");
+    return;
+  }
+
+  if (isServiceStaff) {
+    if (data === "confirm_yes") {
+      const st = props.getProperty(`state_${chatId}`);
+      if (!st || !st.startsWith("CONFIRM_REPAIR|")) return;
+      const tmp = JSON.parse(st.split("|")[1]);
+      const row = addServiceEntry(tmp.repairId, staffName, tmp.masterData);
+      if (row) {
+        sendTelegramWithButtons(chatId, `✅ *စရင်းသွင်းပြီးပါပြီ*\n\n🆔 ${tmp.repairId}\n📱 ${tmp.masterData.model}\n👤 ${tmp.masterData.ownerName}\n🔧 ${tmp.masterData.issue}\n⏳ Status: Pending\n\n*ပြင်ပြီးပါက Done ခလုတ်နှိပ်ပေးပါ။*`, [[{ text: "✅ ပြင်ပြီး Done", callback_data: `done_${row}` }], [{ text: "🏠 Home", callback_data: "home" }]]);
+        notifyAdmin(`📢 *စရင်းအသစ်*\n👤 ${staffName}\n🆔 ${tmp.repairId}\n📱 ${tmp.masterData.model}\n👥 ${tmp.masterData.ownerName}\n🔧 ${tmp.masterData.issue}`);
+      } else sendTelegram(chatId, "❌ စရင်းသွင်းရာတွင် အမှားရှိပါသည်။");
+      props.deleteProperty(`state_${chatId}`);
+    } else if (data === "confirm_no") {
+      editMessage(chatId, messageId, cb.message.text + "\n\n❌ *Cancelled*");
+      props.deleteProperty(`state_${chatId}`);
+      sendTelegramWithButtons(chatId, "စရင်းသွင်းခြင်းကို ဖျက်သိမ်းလိုက်ပါပြီ။", [[{ text: "🏠 Home", callback_data: "home" }]]);
+    } else if (data === "home") {
+      props.deleteProperty(`state_${chatId}`);
+      showServiceMenu(chatId, staffName);
+    } else if (data === "menu_new_entry") {
+      props.setProperty(`state_${chatId}`, "WAIT_REPAIR_ID");
+      sendTelegram(chatId, "🆔 *Repair ID* ရိုက်ထည့်ပါ။\n(eg. MH0215, HH1234, AC5678)\n\n*Case-insensitive*");
+    } else if (data === "menu_today") {
+      const jobs = getTodayJobs(staffName);
+      if (!jobs.length) return sendTelegram(chatId, "📅 ဒီနေ့အတွက် စာရင်းမရှိသေးပါဗျ။");
+      let r = `📅 *ဒီနေ့ ပြင်ထားတဲ့အလုံးများ (${staffName})*\n\n`;
+      jobs.forEach((j,i) => { r += `${i+1}. ${j.status==="Done"?"✅":"⏳"} *${j.repairId}* | ${j.model}\n 👤 ${j.owner} | ${j.repairType}\n${j.status==="Done"?" ✅ Done\n":""}\n`; });
+      sendTelegramWithButtons(chatId, r, [[{ text: "🏠 Home", callback_data: "home" }]]);
+    } else if (data === "menu_pending") {
+      const pending = getPendingJobs(staffName);
+      if (!pending.length) return sendTelegram(chatId, "⏳ လက်ရှိ Pending အလုံးမရှိပါဗျ။");
+      const btns = pending.map(j => [{ text: `✅ ${j.repairId} - ${j.model} (${j.owner})`, callback_data: `complete_${j.row}` }]);
+      btns.push([{ text: "🏠 Home", callback_data: "home" }]);
+      sendTelegramWithButtons(chatId, `⏳ *Pending အလုံးများ (${staffName})*\n\nပြီးစီးသွားသော အလုံးများကို အောက်ပါခလုတ်များမှ ရွေးချယ်၍ Done လုပ်ပါ။`, btns);
+    } else if (data === "menu_month") {
+      const sum = getMonthlySummary(staffName);
+      const month = Utilities.formatDate(new Date(), "GMT+6:30", "MMMM");
+      sendTelegramWithButtons(chatId, `💰 *${month} လစာရင်းချုပ် (${staffName})*\n\n📱 စုစုပေါင်းအလုံးရေ: ${sum.totalJobs} လုံး\n⏳ Pending: ${sum.pendingJobs} လုံး\n✅ ပြီးစီး: ${sum.completedJobs} လုံး\n💵 စုစုပေါင်းကော်မရှင်: ${sum.totalCommission.toLocaleString()} ကျပ်`, [[{ text: "🏠 Home", callback_data: "home" }]]);
+    } else if (data.startsWith("done_") || data.startsWith("complete_")) {
+      const rowNum = parseInt(data.split("_")[1]);
+      completeServiceEntry(rowNum);
+      sendTelegram(chatId, `✅ *Done!* အလုံးပြီးစီးပါပြီ။`);
+      const sheet = getServiceSheet();
+      const r = sheet.getRange(rowNum,1,1,sheet.getLastColumn()).getValues()[0];
+      notifyAdmin(`✅ *ပြင်ပြီးစီး*\n👤 ${staffName}\n🆔 ${r[SERVICE_COL.REPAIR_ID]}\n📱 ${r[SERVICE_COL.MODEL]}\n👥 ${r[SERVICE_COL.OWNER]}\n🔧 ${r[SERVICE_COL.REPAIR_TYPE]}`);
+      sendTelegramWithButtons(chatId, "ဆက်လက်လုပ်ဆောင်ရန် Home နှိပ်ပါ။", [[{ text: "🏠 Home", callback_data: "home" }]]);
+    }
+  }
+}
+
+
+// ==================== SPREADSHEET TRIGGER ====================
+function onEditTrigger(e) {
+  if (!e) return;
+  
+  // First: Auto-generate Repair ID
+  autoGenerateRepairIdOnEdit(e);
+  
+  // Then: Handle collection notifications
+  const sheet = e.range.getSheet();
+  const sheetId = sheet.getSheetId().toString();
+  
+  // Check both configs
+  const config = CUSTOMER_SHEET_CONFIG[sheetId] || REPORT_SHEET_CONFIG[sheetId];
+
+  if (!config) return;
+  
+  const range = e.range;
+  const col = range.getColumn();
+  const row = range.getRow();
+  const value = (range.getValue() || "").toString().trim();
+  
+  if (row <= 1) return;
+
+  // Auto date marking
+if (col == 2 && value !== "") {
+    sheet.getRange(row, 1).setValue(new Date()).setNumberFormat("dd/mm/yyyy");
+  }
+  
+  // Auto status update
+  if (col == 5 && value == "ပြင်ပြီး") {
+    sheet.getRange(row, 7).setValue("မယူရသေး");
+  }
+  
+  // Trigger notification
+  if (col == config.triggerCol && value == config.triggerValue) {
+    if (sheet.getRange(row, 9).getValue()) return;
+    
+    const now = new Date();
+    sheet.getRange(row, 9).setValue(now).setNumberFormat("dd/mm/yyyy hh:mm:ss am/pm");
+    
+    // Get row data including Column K (11) for Repair ID
+    const rowData = sheet.getRange(row, 1, 1, 11).getValues()[0];
+    const formattedNow = Utilities.formatDate(now, Session.getScriptTimeZone(), "dd/MM/yyyy hh:mm:ss a");
+    
+    // Save to history
+    try {
+      const historySs = SpreadsheetApp.openById(HISTORY_SS_ID);
+      historySs.getSheets()[0].appendRow([rowData[0], rowData[1], rowData[2], rowData[3], rowData[4], rowData[5], formattedNow]);
+    } catch (err) { }
+    
+    // Send notification to specific admin
+    const chatId = PropertiesService.getScriptProperties().getProperty(`CHAT_ID_${sheetId}`);
+    if (chatId) {
+      const message = `✅ *${config.sheetName}* မှ ${config.triggerValue}\n\n📄 Repair ID: ${rowData[10] || rowData[1]}\n👤 နာမည်: ${rowData[2]}\n🏷️ အခြေနေ: ${rowData[6]}`;
+      sendTelegram(chatId, message);
+    }
+    
+    // ALWAYS send to GRAND ADMIN (Mr. Khun)
+    const grandAdminMessage = `🏪 *${config.sheetName}* မှ ${config.triggerValue}\n\n📄 Repair ID: ${rowData[10] || rowData[1]}\n👤 အမည်: ${rowData[2]}\n💰 ပြင်ခ: ${rowData[5] || "0"}\n⏰ အချိန်: ${formattedNow}`;
+    sendTelegram(ADMIN_CHAT_ID, grandAdminMessage);
+    
+    // Send to AC Admin if it's AC Mobile sheet
+    if (sheetId === "796808448") {
+      sendTelegram(AC_ADMIN_ID, grandAdminMessage);
+    }
+  }
+}
+
+// ==================== MENU & TRIGGER INSTALLATION ====================
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu("Mahar Shwe Bot")
+  .addItem("🚀 Webhook ချိတ်ဆက်မည်", "setMainWebhook")
+  .addItem("🛠️ Install Spreadsheet Trigger", "installTrigger")
+  .addItem("Set Admin Chat ID", "setChatId")
+  .addToUi();
+}
+
+function setChatId() {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const sheetId = sheet.getSheetId().toString();
+  
+  // Get shop name from config
+  let shopName = "Unknown Shop";
+  if (MASTER_SHEET_CONFIG[sheetId]) {
+    shopName = MASTER_SHEET_CONFIG[sheetId].sheetName;
+  } else if (REPORT_SHEET_CONFIG[sheetId]) {
+    shopName = REPORT_SHEET_CONFIG[sheetId].sheetName;
+  }
+  
+  const res = ui.prompt(`Set Admin Chat ID for ${shopName}:`);
+  if (res.getSelectedButton() == ui.Button.OK) {
+    const chatId = res.getResponseText().trim();
+    PropertiesService.getScriptProperties().setProperty(`CHAT_ID_${sheetId}`, chatId);
+    ui.alert(`✅ Admin Chat ID set for ${shopName}: ${chatId}`);
+  }
+}
+
+
+function installTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger("onEditTrigger").forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet()).onEdit().create();
+  SpreadsheetApp.getUi().alert("Trigger Installed!");
+}
+
+function setMainWebhook() {
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbyKFWC5azN8cUFoW7ylM6rVqQraoAQRgMjvOVty6lBBrNeUDwMdCSXUAlcH7KSkmctZ/exec";
+  const url = `https://api.telegram.org/bot${MAIN_BOT_TOKEN}/setWebhook?url=${webAppUrl}`;
+  const response = UrlFetchApp.fetch(url);
+  Logger.log(response.getContentText());
+}
+
+// ==================== TEST FUNCTIONS ====================
+function testTrainingSystem() {
+  console.log("🧪 Testing Training System...");
+  
+  const sheet = getTrainingSheet();
+  console.log("✅ Training sheet:", sheet.getName());
+  
+  const testQuestions = [
+    "ဖုန်းပြင်ဖို့ ဘယ်လောက်ကျသလဲ",
+    "ဘယ်နှစ်နာရီကြာမလဲ",
+    "ဆိုင်ဘယ်မှာလဲ",
+    "test unknown question"
+  ];
+  
+  testQuestions.forEach(question => {
+    const answer = findTrainingAnswer(question);
+    if (answer) {
+      console.log(`✅ "${question.substring(0, 20)}..." → Found (${answer.score}%)`);
+    } else {
+      console.log(`❌ "${question.substring(0, 20)}..." → Not found`);
+    }
+  });
+  
+  const stats = getTrainingStats();
+  console.log("📊 Stats:", stats);
+  
+  console.log("🎉 Training system test completed");
+  return true;
+}
+function autoGenerateRepairIdOnEdit(e) {
+  if (!e) return;
+  
+  try {
+    const sheet = e.range.getSheet();
+    const sheetId = sheet.getSheetId().toString();
+    
+    // Check if this is a master sheet
+    if (!MASTER_SHEET_CONFIG[sheetId]) return;
+    
+    const range = e.range;
+    const col = range.getColumn();
+    const row = range.getRow();
+    const value = (range.getValue() || "").toString().trim();
+    
+    if (row <= 1) return; // Skip header
+    
+    // Trigger when data entered in Column B (Voucher) OR Column C (Name)
+    if ((col === 2 || col === 3) && value !== "") {
+
+// Check if Repair ID already exists in Column K
+      const existingRepairId = sheet.getRange(row, 11).getValue(); // Column K = 11
+      if (existingRepairId) return; // Already has Repair ID
+      
+      // Get row data
+      const rowData = sheet.getRange(row, 1, 1, 11).getValues()[0];
+      
+      // Generate Repair ID
+      const repairId = generateRepairId(sheetId, rowData);
+      
+      // Set Repair ID in Column K
+      sheet.getRange(row, 11).setValue(repairId);
+      
+      // Log for debugging
+      console.log(`Generated Repair ID: ${repairId} for ${MASTER_SHEET_CONFIG[sheetId].sheetName} row ${row}`);
+    }
+  } catch (error) {
+    console.log(`Error in autoGenerateRepairIdOnEdit: ${error}`);
+  }
+}
+
+
+// ==================== REPAIR ID AUTO GENERATE ====================
+function generateRepairId(sheetId, rowData) {
+  const config = MASTER_SHEET_CONFIG[sheetId];
+  if (!config) return "";
+  
+  const shopName = config.sheetName;
+  let prefix = "";
+  
+  // Determine prefix based on shop name
+  if (shopName.includes("MaharShwe") || shopName.includes("Mahar Shwe")) {
+    prefix = "MH";
+  } else if (shopName.includes("AC Mobile")) {
+    prefix = "AC";
+  } else if (shopName.includes("BO BO")) {
+    prefix = "BO";
+  } else if (shopName.includes("The Light")) {
+    prefix = "TL";
+  } else if (shopName.includes("Power 9")) {
+    prefix = "P9";
+  } else if (shopName.includes("Hsi Hseng")) {
+    prefix = "HH";
+  } else {
+    prefix = "RP";
+  }
+  
+  // ==================== FIX 1: MAHAR SHWE ====================
+  // Mahar Shwe ဆိုရင် Column B (2) Voucher ကို ကြည့်
+  if (prefix === "MH") {
+    if (rowData[1]) { // Column B = index 1
+      const voucher = rowData[1].toString().trim();
+      if (voucher && voucher.match(/^\d+$/)) {
+        const num = parseInt(voucher);
+        return `MH${num.toString().padStart(4, '0')}`;
+      }
+    }
+    // If no voucher, use default
+    return "MH0001";
+  }
+  
+  // ==================== FIX 2: OTHER SHOPS - AC4011 FORMAT ====================
+  // Format: AC + Month + Day + Counter
+  // Example: 1/4/26 → AC4011, AC4012, AC4013 (AC + 4 + 01 + 1)
+  // Example: 2/4/26 → AC4021, AC4022, AC4023 (AC + 4 + 02 + 1)
+  // Example: 14/4/26 → AC4141, AC4142, AC4143 (AC + 4 + 14 + 1)
+  
+  const now = new Date();
+  const day = now.getDate().toString().padStart(2, '0'); // 01, 02, ..., 31
+  const month = (now.getMonth() + 1).toString(); // 4, 5, ..., 12 (no padding)
+  
+  // Get the sheet
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(config.sheetName);
+  if (!sheet) return `${prefix}${month}${day}1`;
+  
+  // Check for existing IDs
+  const data = sheet.getDataRange().getValues();
+  let maxCounter = 0;
+  
+  // Pattern: AC4011, AC4012, etc.
+  const dateBase = `${prefix}${month}${day}`; // AC401, AC402, AC414, etc.
+  
+  for (let i = 1; i < data.length; i++) {
+    const repairId = data[i][10]; // Column K = index 10
+    if (repairId && typeof repairId === 'string') {
+      if (repairId.startsWith(dateBase)) {
+        // Extract counter (last 1-2 digits)
+        const idWithoutPrefix = repairId.substring(prefix.length); // Remove "AC"
+        const dayMonthPart = idWithoutPrefix.substring(0, idWithoutPrefix.length - 1); // Get "401" from "AC4011"
+        const counterStr = repairId.substring(dateBase.length);
+        const counter = parseInt(counterStr);
+        
+        if (!isNaN(counter) && counter > maxCounter) {
+          maxCounter = counter;
+        }
+      }
+    }
+  }
+  
+  // Generate next counter
+  const nextCounter = maxCounter + 1;
+  
+  // Format: AC4011, BO4011, TL4011, etc.
+  return `${dateBase}${nextCounter}`;
+}
+
+
+function testAllFunctions() {
+  console.log("🚀 Testing All Functions...");
+  
+  const trainingTest = testTrainingSystem();
+  
+  console.log("\n📡 Testing Telegram API...");
+  try {
+    const url = "https://api.telegram.org/bot" + MAIN_BOT_TOKEN + "/getMe";
+    const response = UrlFetchApp.fetch(url);
+    const data = JSON.parse(response.getContentText());
+    console.log("✅ Telegram API:", data.ok ? "Working" : "Failed");
+    console.log("🤖 Bot:", data.result.first_name);
+  } catch (error) {
+    console.log("❌ Telegram API Error:", error.toString());
+  }
+  
+  console.log("\n📊 Testing Spreadsheet Access...");
+  try {
+    const serviceSheet = getServiceSheet();
+    console.log("✅ Service sheet:", serviceSheet.getName());
+    
+    const trainingSheet = getTrainingSheet();
+    console.log("✅ Training sheet:", trainingSheet.getName());
+    
+    const pendingSheet = getPendingTrainingSheet();
+    console.log("✅ Pending training sheet:", pendingSheet.getName());
+  } catch (error) {
+    console.log("❌ Spreadsheet Error:", error.toString());
+  }
+  
+  console.log("\n🎉 All tests completed!");
+  return true;
+}
