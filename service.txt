@@ -1,0 +1,151 @@
+function getServiceSheet() {
+  return SpreadsheetApp.openById(SERVICE_SPREADSHEET_ID).getSheetByName(SERVICE_SHEET_NAME);
+}
+
+function getMasterSheets() {
+  const ss = SpreadsheetApp.openById(MASTER_SPREADSHEET_ID);
+  return ss.getSheets().map(sheet => {
+    const gid = sheet.getSheetId().toString();
+    return MASTER_SHEET_CONFIG[gid] ? { sheet, config: MASTER_SHEET_CONFIG[gid], gid } : null;
+  }).filter(Boolean);
+}
+
+function notifyAdmin(message) {
+  const ids = new Set([GRAND_ADMIN_CHAT_ID, TEST_CHAT_ID]);
+  Object.keys(MASTER_SHEET_CONFIG).forEach(sheetId => {
+    getSheetAdminIds(sheetId).forEach(id => ids.add(id));
+  });
+
+  ids.forEach(id => {
+    try { sendTelegram(id, message); } catch (e) {}
+  });
+}
+
+function findRepairId(repairId) {
+  for (const ms of getMasterSheets()) {
+    const data = ms.sheet.getDataRange().getValues();
+    const c = ms.config;
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const idCell = row[c.repairIdCol];
+      if (idCell && idCell.toString().toLowerCase() === repairId.toLowerCase()) {
+        const model = c.modelCols.length === 1
+          ? (row[c.modelCols[0]] || "")
+          : c.modelCols.map(col => row[col] || "").join(" ").trim();
+
+        return {
+          found: true,
+          data: {
+            repairId: idCell.toString(),
+            model,
+            ownerName: row[c.ownerNameCol] || "",
+            shopName: c.sheetName,
+            issue: row[c.issueCol] || ""
+          }
+        };
+      }
+    }
+  }
+  return { found: false };
+}
+
+function addServiceEntry(repairId, staffName, masterData) {
+  const sheet = getServiceSheet();
+  const now = Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy HH:mm");
+  sheet.appendRow([now, staffName, masterData.model, masterData.issue, masterData.ownerName, "Pending", repairId, "", "", ""]);
+  return sheet.getLastRow();
+}
+
+function completeServiceEntry(rowNum) {
+  const sheet = getServiceSheet();
+  sheet.getRange(rowNum, SERVICE_COL.STATUS + 1).setValue("Done");
+  sheet.getRange(rowNum, SERVICE_COL.COMPLETED_DATE + 1).setValue(Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy HH:mm"));
+  sheet.getRange(rowNum, SERVICE_COL.STATUS + 1).setBackground("#00FF00");
+}
+
+function getTodayJobs(staffName) {
+  const sheet = getServiceSheet();
+  const data = sheet.getDataRange().getValues();
+  const todayStr = Utilities.formatDate(new Date(), "GMT+6:30", "dd/MM/yyyy");
+  const jobs = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rowDate = row[SERVICE_COL.DATE] instanceof Date
+      ? Utilities.formatDate(row[SERVICE_COL.DATE], "GMT+6:30", "dd/MM/yyyy")
+      : (row[SERVICE_COL.DATE] || "").toString().split(" ")[0];
+
+    if (rowDate === todayStr && row[SERVICE_COL.STAFF] === staffName) {
+      jobs.push({
+        row: i + 1,
+        repairId: row[SERVICE_COL.REPAIR_ID],
+        model: row[SERVICE_COL.MODEL],
+        owner: row[SERVICE_COL.OWNER],
+        repairType: row[SERVICE_COL.REPAIR_TYPE],
+        status: row[SERVICE_COL.STATUS]
+      });
+    }
+  }
+  return jobs;
+}
+
+function getPendingJobs(staffName) {
+  const sheet = getServiceSheet();
+  const data = sheet.getDataRange().getValues();
+  const pending = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[SERVICE_COL.STAFF] === staffName && row[SERVICE_COL.STATUS] === "Pending") {
+      pending.push({
+        row: i + 1,
+        repairId: row[SERVICE_COL.REPAIR_ID],
+        model: row[SERVICE_COL.MODEL],
+        owner: row[SERVICE_COL.OWNER]
+      });
+    }
+  }
+  return pending;
+}
+
+function getMonthlySummary(staffName) {
+  const sheet = getServiceSheet();
+  const data = sheet.getDataRange().getValues();
+  const mm = Utilities.formatDate(new Date(), "GMT+6:30", "/MM/yyyy");
+  let totalJobs = 0, pendingJobs = 0, totalCommission = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (row[SERVICE_COL.STAFF] !== staffName) continue;
+
+    const d = row[SERVICE_COL.DATE];
+    const rowMonth = d instanceof Date ? Utilities.formatDate(d, "GMT+6:30", "/MM/yyyy") : (() => {
+      const p = (d || "").toString().split(" ")[0].split("/");
+      return p.length === 3 ? `/${p[1]}/${p[2]}` : "";
+    })();
+
+    if (rowMonth === mm) {
+      totalJobs++;
+      if (row[SERVICE_COL.STATUS] === "Pending") pendingJobs++;
+      else if (row[SERVICE_COL.STATUS] === "Done") totalCommission += parseFloat(row[SERVICE_COL.COMMISSION]) || 0;
+    }
+  }
+
+  return { totalJobs, pendingJobs, completedJobs: totalJobs - pendingJobs, totalCommission };
+}
+
+function processRepairId(chatId, repairId, staffName) {
+  const r = findRepairId(repairId);
+  if (!r.found) {
+    sendTelegram(chatId, "❌ Repair ID မတွေ့ပါ။");
+    return;
+  }
+
+  PropertiesService.getScriptProperties().setProperty(`state_${chatId}`, "CONFIRM_REPAIR|" + JSON.stringify({ repairId, masterData: r.data }));
+  sendTelegramWithButtons(chatId, `🔍 *တွေ့ရှိချက်*\n\n🆔 Repair ID: ${r.data.repairId}\n🏪 Shop: ${r.data.shopName}\n📱 Model: ${r.data.model}\n👤 Owner: ${r.data.ownerName}\n🔧 Issue: ${r.data.issue}\n\nစရင်းသွင်းမလား?`, [
+    [{ text: "✅ ပြင်မယ်", callback_data: "confirm_yes" }],
+    [{ text: "❌ Cancel", callback_data: "confirm_no" }],
+    [{ text: "🏠 Home", callback_data: "home" }]
+  ]);
+}
