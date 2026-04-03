@@ -34,6 +34,9 @@ const VPN_PAYMENT_PLATFORM = "KBZ Pay";
 const AI_MODEL_ENABLED = false;
 const AI_MODEL_API_URL = "";
 const AI_MODEL_API_KEY = "";
+const AI_ROUTER_ENABLED = false;
+const AI_ROUTER_API_URL = "";
+const AI_ROUTER_API_KEY = "";
 
 const staffChatIDs = {
   "Khun Lwin OO": "5386894413",
@@ -208,6 +211,44 @@ function getMonthlySummary(staffName) {
 }
 
 function notifyAdmin(message) { sendTelegram(ADMIN_CHAT_ID, message); }
+
+// ==================== AI ROUTER LAYER ====================
+function detectIntentLocally(text) {
+  const input = (text || "").trim();
+  const lower = input.toLowerCase();
+
+  if (!input) return { intent: "empty", confidence: 1, action: "ignore" };
+  if (REPAIR_ID_PATTERN.test(input)) return { intent: "repair_lookup", confidence: 0.99, action: "repair_lookup", repairId: input };
+  if (/^0\d{2,}$/.test(input)) return { intent: "voucher_lookup", confidence: 0.98, action: "voucher_lookup", voucher: input };
+  if (input === "🏠 Main Menu" || input === "Home") return { intent: "menu_home", confidence: 0.99, action: "show_menu" };
+  if (input === "📞 Contact ဆက်သွယ်မည်") return { intent: "contact_request", confidence: 0.99, action: "contact" };
+  if (lower.includes("trial") || lower.includes("free vpn") || lower.includes("free trial")) return { intent: "vpn_free_request", confidence: 0.88, action: "vpn_free" };
+  if (lower.includes("1 month") || lower.includes("1m") || lower.includes("3000")) return { intent: "vpn_plan_1m", confidence: 0.88, action: "vpn_1m" };
+  if (lower.includes("2 month") || lower.includes("2m") || lower.includes("5000")) return { intent: "vpn_plan_2m", confidence: 0.88, action: "vpn_2m" };
+  if (lower.includes("vpn")) return { intent: "vpn_general", confidence: 0.8, action: "vpn_menu" };
+  return { intent: "unknown", confidence: 0.2, action: "fallback" };
+}
+
+function callExternalAIRouter(text, chatId, state) {
+  if (!AI_ROUTER_ENABLED || !AI_ROUTER_API_URL) return null;
+  try {
+    const response = UrlFetchApp.fetch(AI_ROUTER_API_URL, {
+      method: "post",
+      contentType: "application/json",
+      muteHttpExceptions: true,
+      headers: AI_ROUTER_API_KEY ? { Authorization: "Bearer " + AI_ROUTER_API_KEY } : {},
+      payload: JSON.stringify({ text: text, chatId: chatId, state: state })
+    });
+    const result = JSON.parse(response.getContentText());
+    return result && result.intent ? result : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function routeUserIntent(text, chatId, state) {
+  return callExternalAIRouter(text, chatId, state) || detectIntentLocally(text);
+}
 
 // ==================== TELEGRAM HELPERS ====================
 function sendTelegram(chatId, text, kb = null, parseMode = "Markdown") {
@@ -997,6 +1038,7 @@ function doPost(e) {
     const isAdmin = (chatId === ADMIN_CHAT_ID || chatId === AC_ADMIN_ID);
     const props = PropertiesService.getScriptProperties();
     let userState = props.getProperty(`state_${chatId}`);
+    const routedIntent = routeUserIntent(text, chatId, userState);
 
     // ----- PRIORITY STATE HANDLING -----
     if (userState === "WAITING_VPN_FREE_NAME" && text) {
@@ -1017,6 +1059,27 @@ function doPost(e) {
       }
       if (text) {
         sendTelegram(chatId, "📸 KBZ Pay receipt screenshot ပုံပဲ ပို့ပေးပါ။");
+        return;
+      }
+    }
+
+    // ----- AI ROUTER PRE-HANDLERS -----
+    if (!userState) {
+      if (routedIntent.action === "show_menu") {
+        if (isAdmin) sendMainMenu(chatId, "မင်္ဂလာပါ Mahar Shwe Mobile Admin မှ ကြိုဆိုပါတယ်။");
+        else showCustomerMenu(chatId);
+        return;
+      }
+      if (routedIntent.action === "contact" && !isServiceStaff && !isAdmin) {
+        sendTelegram(chatId, "📍 *Mahar Shwe Mobile*\n\n🏠 နေရာ: ဆီဆိုင်မြို့\n💬 Telegram: @Mylifemychoice68");
+        return;
+      }
+      if (routedIntent.action === "repair_lookup" && isServiceStaff) {
+        processRepairId(chatId, routedIntent.repairId, staffName);
+        return;
+      }
+      if (routedIntent.action === "voucher_lookup" && !isServiceStaff && !isAdmin) {
+        voucherLookup(chatId, routedIntent.voucher);
         return;
       }
     }
